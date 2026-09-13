@@ -1,0 +1,39 @@
+
+{% if request.GET.q %}<div class="customer-section-head"><h2>Search matches</h2><a href="?mode={{ order_mode }}">Clear search</a></div>{% endif %}
+{% for section in restaurant_sections %}
+<section class="restaurant-shelf" data-restaurant-shelf aria-label="{{ section.name }}">
+  <header><h2>{{ section.name }}</h2><div>
+    <button type="button" data-shelf-all aria-expanded="false">See All</button>
+    <button type="button" data-shelf-arrow="-1" aria-label="Previous restaurants">&#8249;</button>
+    <button type="button" data-shelf-arrow="1" aria-label="Next restaurants">&#8250;</button>
+  </div></header>
+  <div class="restaurant-shelf-rail" data-shelf-rail>
+  {% for r in section.restaurants %}
+    <article class="restaurant-showcase" data-restaurant-url="/customer/restaurant/{{ r.id }}" tabindex="0" role="link" aria-label="View {{ r.name }}">
+      <div class="restaurant-showcase-photos">
+        <div class="restaurant-photo-rail" data-restaurant-photos>
+        {% for item in r.matches %}
+          <a href="/customer/restaurant/{{ r.id }}" class="restaurant-photo-slide" data-restaurant="{{ r.name }}" data-id="{{ item.id }}" data-name="{{ item.name }}" data-description="{{ item.description }}" data-price="{{ item.price }}" data-category="{{ item.category }}" data-veg="{{ item.veg|yesno:'Vegetarian,Non vegetarian' }}">
+            {% if item.photo_url %}<img src="{{ item.photo_url }}?size=menu" data-full-src="{{ item.photo_url }}" width="320" height="200" alt="{{ item.name }}" loading="{% if forloop.first %}eager{% else %}lazy{% endif %}" decoding="async" fetchpriority="{% if forloop.first and forloop.parentloop.counter <= 5 %}high{% else %}low{% endif %}">{% else %}<span class="restaurant-photo-placeholder">{{ item.name|first }}</span>{% endif %}
+            <span class="restaurant-photo-caption">{{ item.name }} · &#36;{{ item.price|floatformat:2 }}</span>
+          </a>
+        {% empty %}
+          <a class="restaurant-photo-placeholder" href="/customer/restaurant/{{ r.id }}">{{ r.name|first }}</a>
+        {% endfor %}
+        </div>
+        {% if r.matches|length > 1 %}
+        <button type="button" class="restaurant-photo-prev" data-photo-arrow="-1" aria-label="Previous menu photo for {{ r.name }}">&#8249;</button>
+        <button type="button" class="restaurant-photo-next" data-photo-arrow="1" aria-label="Next menu photo for {{ r.name }}">&#8250;</button>
+        {% endif %}
+      </div>
+      <h3><a href="/customer/restaurant/{{ r.id }}">{{ r.name }}</a></h3>
+      <p>&#9733; {{ r.rating }} ({{ r.rating_count }}) · {{ r.delivery_minutes }} min</p>
+      <p>{% if r.is_open %}<span class="restaurant-open">Open</span> · Closes {{ r.closing_label }}{% else %}Closed · Opens {{ r.opening_label }}{% endif %}</p>
+      <a class="restaurant-full-menu" href="/customer/restaurant/{{ r.id }}">View full menu</a>
+    </article>
+  {% endfor %}
+  </div>
+</section>
+{% empty %}
+<p>No restaurants match your search.</p>
+{% endfor %}

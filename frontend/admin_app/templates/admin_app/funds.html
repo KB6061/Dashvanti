@@ -1,0 +1,47 @@
+{% extends 'admin_app/admin_base.html' %}
+{% load static %}
+{% block admin_content %}
+<link rel="stylesheet" href="{% static 'admin-funds.css' %}?v=1">
+<div class="funds-page">
+<section class="admin-panel"><h2>Cancellation policy</h2><p>Free before preparation. During preparation, the charge is a percentage of discounted food value. Restaurant/admin cancellation gives a full refund of the remaining payment. After pickup, admin review is required. Changes apply to new orders.</p>
+<form method="post" class="admin-edit-grid">{% csrf_token %}<input type="hidden" name="action" value="cancellation_policy">
+<label>Preparation charge (%)<input name="preparation_percent" type="number" min="0" max="100" value="{{ cancellation_policy.preparation_percent }}" required></label>
+<label>Flag for review after cancellations in 30 days<input name="review_threshold" type="number" min="2" max="100" value="{{ cancellation_policy.review_threshold }}" required></label><button>Save cancellation policy</button></form></section>
+<div class="admin-title"><div><h1>Fund Management</h1><span class="admin-live">Database pricing</span></div></div>
+<div class="admin-form-panels">
+<section class="admin-panel"><h2>Core fee & pricing controls</h2>
+<p>Changes apply to new checkout totals. Existing orders retain their original charges.</p>
+<div class="admin-table-scroll"><table><thead><tr><th>Rule</th><th>Calculation</th><th class="money">Value</th><th class="money">Minimum (USD)</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+{% for row in rules %}<tr><td><strong>{% if row.kind == 'tax' %}Tax{% elif row.kind == 'service_fee' %}Service fee{% elif row.kind == 'delivery_fee' %}Delivery fee{% elif row.kind == 'discount' %}Discount{% elif row.kind == 'refund_limit' %}Refund limit{% else %}{{ row.kind }}{% endif %}</strong></td><td>{% if row.method == 'percent' %}Percentage{% else %}Fixed amount{% endif %}</td><td class="money">{% if row.method == 'percent' %}{{ row.value|floatformat:2 }}%{% else %}&#36;{{ row.value|floatformat:2 }}{% endif %}</td><td class="money">&#36;{{ row.minimum|floatformat:2 }}</td><td><span class="fund-status {% if row.enabled %}active{% else %}inactive{% endif %}">{% if row.enabled %}Enabled{% else %}Disabled{% endif %}</span></td><td class="fund-actions">
+<details><summary>Update</summary><form method="post">{% csrf_token %}<input name="kind" value="{{ row.kind }}" type="hidden">
+<select name="method"><option value="flat" {% if row.method == 'flat' %}selected{% endif %}>Flat USD</option><option value="percent" {% if row.method == 'percent' %}selected{% endif %}>Percent</option></select>
+<label>Value<input name="value" type="number" min="0" max="100000" step=".01" value="{{ row.value }}" required></label>
+<label>Minimum<input name="minimum" type="number" min="0" step=".01" value="{{ row.minimum }}"></label>
+<label><input name="enabled" type="checkbox" {% if row.enabled %}checked{% endif %}>Enabled</label><button>Save</button></form></details>
+<form method="post">{% csrf_token %}<input name="kind" value="{{ row.kind }}" type="hidden"><button name="action" value="delete" class="admin-delete">Delete</button></form></td></tr>
+{% empty %}<tr><td colspan="6">No pricing rules. Charges default to zero.</td></tr>{% endfor %}</tbody></table></div>
+<details class="admin-create"><summary>Add fee / price rule</summary><form method="post" class="admin-edit-grid">{% csrf_token %}
+<label>Type<select name="kind"><option value="tax">Tax</option><option value="service_fee">Service fee</option><option value="delivery_fee">Delivery fee</option><option value="discount">Discount</option><option value="refund_limit">Refund limit</option></select></label>
+<label>Calculation<select name="method"><option value="flat">Flat USD</option><option value="percent">Percent</option></select></label>
+<label>Value<input name="value" type="number" min="0" max="100000" step=".01" required></label><label>Minimum<input name="minimum" type="number" min="0" step=".01" value="0"></label>
+<label><input name="enabled" type="checkbox" checked>Enabled</label><button>Save rule</button></form></details>
+</section>
+<section class="admin-panel"><h2>Order workflow</h2><ol>
+<li>Checkout uses current admin pricing and saves an order charge snapshot.</li><li>New restaurant alert opens for 10 seconds, then minimizes.</li><li>Restaurant accepts → customer sees Preparing Order.</li><li>Online drivers receive an offer with sound after browser sound permission.</li><li>Assigned driver GPS appears on the customer tracking map.</li>
+</ol><h2>Refund request</h2><p>Requests are recorded as pending. A payment provider must process the money transfer.</p>
+<form method="post" class="admin-edit-grid">{% csrf_token %}<input name="action" value="refund" type="hidden">
+<label>Order ID<input name="order_id" type="number" min="1" required></label><label>Amount USD<input name="amount" type="number" min=".01" step=".01" required></label>
+<label class="admin-wide">Reason<input name="reason" minlength="3" maxlength="500" required></label><button>Request refund</button></form></section></div>
+<section class="admin-panel"><h2>Refund history <span class="fund-count">{{ refund_total }} records</span></h2><form method="get" class="fund-filters">
+<label>Search refunds<input name="q" value="{{ refund_query }}" placeholder="Order number or refund reason"></label>
+<label>Status<select name="status"><option value="">All statuses</option>{% for status in refund_statuses %}<option value="{{ status }}" {% if status == refund_status %}selected{% endif %}>{{ status|title }}</option>{% endfor %}</select></label>
+<label>Rows per page<select name="size"><option {% if page_size == 25 %}selected{% endif %}>25</option><option {% if page_size == 50 %}selected{% endif %}>50</option><option {% if page_size == 100 %}selected{% endif %}>100</option></select></label>
+<button type="submit">Search</button><a href="/admin/funds">Clear</a></form>
+<div class="admin-table-scroll"><table><thead><tr><th>Order</th><th class="money">Amount (USD)</th><th>Reason</th><th>Status</th><th>Actions</th></tr></thead><tbody>{% for row in refunds %}<tr><td><a href="/admin/order/{{ row.order_id }}">#{{ row.order_id }}</a></td><td class="money">&#36;{{ row.amount|floatformat:2 }}</td><td>{{ row.reason }}</td><td><span class="fund-status">{{ row.status|title }}</span></td><td class="fund-actions">{% if row.status == 'PENDING' and not row.cancellation %}<details><summary>Update</summary><form method="post">{% csrf_token %}<input type="hidden" name="action" value="edit_refund"><input type="hidden" name="refund_id" value="{{ row.id }}"><input type="hidden" name="order_id" value="{{ row.order_id }}"><label>Amount<input name="amount" type="number" min=".01" step=".01" value="{{ row.amount }}" required></label><label>Reason<input name="reason" value="{{ row.reason }}" required minlength="3"></label><button>Save</button></form></details><form method="post">{% csrf_token %}<input type="hidden" name="refund_id" value="{{ row.id }}"><button name="action" value="delete_refund">Delete</button></form>{% else %}<span class="fund-muted">—</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="5">No refunds requested.</td></tr>{% endfor %}</tbody></table></div><nav class="fund-pagination" aria-label="Refund pages">
+<span>{% if refund_total %}{{ refund_page.start_index }}–{{ refund_page.end_index }} of {{ refund_total }}{% else %}0 records{% endif %}</span>
+{% if refund_page.has_previous %}<a href="?q={{ refund_query|urlencode }}&amp;status={{ refund_status|urlencode }}&amp;size={{ page_size }}&amp;page={{ refund_page.previous_page_number }}">Previous</a>{% endif %}
+<span>Page {{ refund_page.number }} of {{ refund_page.paginator.num_pages }}</span>
+{% if refund_page.has_next %}<a href="?q={{ refund_query|urlencode }}&amp;status={{ refund_status|urlencode }}&amp;size={{ page_size }}&amp;page={{ refund_page.next_page_number }}">Next</a>{% endif %}
+</nav></section>
+</div>
+{% endblock %}

@@ -1,0 +1,24 @@
+        <article class="customer-menu-card" tabindex="0" role="button" data-menu-popup data-restaurant="{{ restaurant.name }}" data-id="{{ item.id }}" data-name="{{ item.name }}" data-description="{{ item.description }}" data-price="{{ item.price }}" data-category="{{ item.category }}" data-veg="{{ item.veg|yesno:'Vegetarian,Non vegetarian' }}">
+          <div class="customer-menu-picture">
+            {% if item.photo_urls %}
+            <img src="{{ item.photo_urls.0 }}?size=menu" data-full-src="{{ item.photo_urls.0 }}" width="320" height="320" alt="{{ item.name }}" loading="eager" decoding="async">
+            {% else %}
+            <div class="customer-menu-placeholder">{{ item.name|first }}</div>
+            {% endif %}
+          </div>
+          <div class="customer-menu-details">
+            <span class="customer-menu-diet {% if item.veg %}veg{% else %}non-veg{% endif %}">{% if item.veg %}Vegetarian{% else %}Non vegetarian{% endif %}</span>
+            <h3>{{ item.name }}</h3>
+            <p>{{ item.description|default:'Freshly prepared to order.' }}</p>
+            <div class="customer-menu-order-row">
+              <strong>${{ item.price }}</strong>
+              <form method="post" action="/customer/cart" data-menu-cart-add>
+                {% csrf_token %}
+                <input type="hidden" name="menu_item_id" value="{{ item.id }}">
+                <label><span>Quantity</span><input type="number" name="quantity" value="1" min="1" max="50" inputmode="numeric"></label>
+                <button type="submit" class="menu-add-plus" aria-label="Add {{ item.name }} to cart">+</button>
+              </form>
+            </div>
+            <small class="customer-menu-add-status" data-menu-add-status aria-live="polite"></small>
+          </div>
+        </article>

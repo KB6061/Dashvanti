@@ -1,0 +1,1 @@
+{% extends 'form.html' %}{% block after_form %}<h2>Your uploads</h2>{% for file in files %}<p><a href="/{{ portal }}/files/{{ file.id }}">{{ file.purpose }} #{{ file.id }}</a>{% if file.entity_id %} · Linked to #{{ file.entity_id }}{% endif %}</p>{% empty %}<p>No files uploaded yet.</p>{% endfor %}{% endblock %}

@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>{% if portal == 'driver' %}Your earnings{% else %}Kitchen analytics{% endif %}</h1>
+{% if portal == 'driver' %}<a class="button" data-report-popup href="/driver/earnings/pdf?period={{ period }}">View earnings report</a>{% endif %}
+<nav class="auth-links">
+  <a href="?period=daily">Daily</a>
+  <a href="?period=weekly">Weekly</a>
+  <a href="?period=monthly">Monthly</a>
+</nav>
+<p>Rolling {{ period }} report &middot; Completed orders</p>
+<div class="grid">
+  <article class="card">
+    <p>Revenue / earnings</p>
+    <h2>${{ revenue }}</h2>
+  </article>
+  <article class="card">
+    <p>Completed orders</p>
+    <h2>{{ orders }}</h2>
+  </article>
+</div>
+{% if top_items %}
+<h2 class="mt-4">Top-selling items</h2>
+{% for item in top_items %}
+<p>{{ item.name }} &middot; {{ item.units }} sold</p>
+{% endfor %}
+{% endif %}
+{% endblock %}

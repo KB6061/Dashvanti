@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="admin-console">
+  <div class="admin-head"><div><p class="eyebrow">Admin</p><h1>Users</h1></div><a href="/admin/dashboard">Dashboard</a></div>
+  <form class="filters" method="get">
+    <select name="role">
+      <option value="">All roles</option>
+      <option value="customer" {% if role == 'customer' %}selected{% endif %}>Customers</option>
+      <option value="restaurant" {% if role == 'restaurant' %}selected{% endif %}>Restaurants</option>
+      <option value="driver" {% if role == 'driver' %}selected{% endif %}>Drivers</option>
+    </select>
+    <button class="btn btn-primary">Filter</button>
+  </form>
+  <div class="admin-table">
+    {% for row in rows %}
+    <article><strong>#{{ row.id }} {{ row.name }}</strong><span>{{ row.role }} · {{ row.email }} · {{ row.phone|default:'no phone' }}</span></article>
+    {% empty %}<p>No users found.</p>{% endfor %}
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="operations-shell">
+  {% if mode == 'support' %}
+  <div class="intro"><div><p class="eyebrow">HELP CENTER</p><h1>Support tickets</h1><p>Send a request to Dashvanti support. Your order details stay linked to the ticket.</p></div></div>
+  <form method="post" class="form-card operations-form">{% csrf_token %}
+    <label>Related order <select name="order_id"><option value="">General question</option>{% for order in orders %}<option value="{{ order.id }}">Order #{{ order.id }} · {{ order.status }}</option>{% endfor %}</select></label>
+    <label>Subject <input required name="subject" minlength="3" maxlength="120"></label>
+    <label>What happened? <textarea required name="description" minlength="5" maxlength="2000"></textarea></label>
+    <button>Send request</button>
+  </form>
+  <div class="ticket-list">{% for ticket in tickets %}<article><div><strong>{{ ticket.subject }}</strong><span class="ticket-status {{ ticket.status }}">{{ ticket.status }}</span></div><p>{{ ticket.description }}</p>{% if ticket.resolution %}<p class="resolution">Support: {{ ticket.resolution }}</p>{% endif %}<small>{% if ticket.order_id %}Order #{{ ticket.order_id }} · {% endif %}{{ ticket.created_at }}</small></article>{% empty %}<p class="empty-copy">No support tickets yet.</p>{% endfor %}</div>
+  {% elif mode == 'chat' %}
+  <div class="intro"><div><p class="eyebrow">ORDER CHAT</p><h1>Order #{{ order_id }}</h1><p>Messages are saved and visible only to this order’s customer, restaurant, and assigned driver.</p></div></div>
+  <div class="message-list">{% for message in messages %}<article class="{% if message.user_id == request.session.user_id %}mine{% endif %}"><strong>{{ message.user_name }}</strong><p>{{ message.body }}</p><small>{{ message.created_at }}</small></article>{% empty %}<p class="empty-copy">No messages yet. Start the conversation.</p>{% endfor %}</div>
+  <form method="post" class="form-card operations-form">{% csrf_token %}<label>Message <textarea required name="body" maxlength="2000"></textarea></label><button>Send message</button></form>
+  {% else %}
+  <div class="intro"><div><p class="eyebrow">UPDATES</p><h1>Notifications</h1><p>Order, chat, and support updates appear here.</p></div></div>
+  <div class="ticket-list">{% for notification in notifications %}<article><div><strong>{{ notification.kind|title }}</strong>{% if not notification.read_at %}<span class="ticket-status open">New</span>{% endif %}</div><p>{{ notification.body }}</p><small>{{ notification.created_at }}</small>{% if not notification.read_at %}<form method="post">{% csrf_token %}<input type="hidden" name="notification_id" value="{{ notification.id }}"><button class="secondary-action">Mark read</button></form>{% endif %}</article>{% empty %}<p class="empty-copy">No notifications yet.</p>{% endfor %}</div>
+  {% endif %}
+</section>
+{% endblock %}

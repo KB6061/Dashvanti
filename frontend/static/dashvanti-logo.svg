@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1247 849" role="img" aria-labelledby="title desc">
+  <title id="title">Dashvanti</title>
+  <desc id="desc">Dashvanti runner mascot holding hot food with text One who delivers fast.</desc>
+  <defs>
+    <linearGradient id="face" x1="520" y1="192" x2="650" y2="336" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffbd3f"/>
+      <stop offset=".58" stop-color="#ff7b2f"/>
+      <stop offset="1" stop-color="#d9453c"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="420" y1="160" x2="720" y2="484" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5ccfc0"/>
+      <stop offset=".5" stop-color="#129a9b"/>
+      <stop offset="1" stop-color="#075966"/>
+    </linearGradient>
+    <linearGradient id="shirt" x1="472" y1="300" x2="670" y2="470" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d9eee9"/>
+      <stop offset="1" stop-color="#7bbeb6"/>
+    </linearGradient>
+    <linearGradient id="tray" x1="748" y1="164" x2="928" y2="285" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffd66f"/>
+      <stop offset="1" stop-color="#c97224"/>
+    </linearGradient>
+    <filter id="softGlow" x="-18%" y="-18%" width="136%" height="136%">
+      <feDropShadow dx="0" dy="0" stdDeviation="11" flood-color="#9fe5dc" flood-opacity=".85"/>
+      <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#0b2b43" flood-opacity=".22"/>
+    </filter>
+  </defs>
+  <rect width="1247" height="849" fill="#fff"/>
+
+  <g filter="url(#softGlow)">
+    <path d="M490 217c-88 0-158 13-211 34 68 7 134 10 221 4" fill="none" stroke="#d7a44d" stroke-width="11" stroke-linecap="round"/>
+    <path d="M497 253c-94 2-174 16-235 42 83 7 162 7 251-2" fill="none" stroke="#de7654" stroke-width="11" stroke-linecap="round"/>
+    <path d="M485 302c-93 4-172 21-236 49 85 10 169 7 260-5" fill="none" stroke="#56b6af" stroke-width="11" stroke-linecap="round"/>
+    <path d="M482 346c-86 8-157 26-212 55 79 5 161-1 250-20" fill="none" stroke="#197b87" stroke-width="11" stroke-linecap="round"/>
+
+    <path d="M498 340c-39 34-65 77-83 128" fill="none" stroke="#123354" stroke-width="31" stroke-linecap="round"/>
+    <path d="M498 340c-39 34-65 77-83 128" fill="none" stroke="#126f78" stroke-width="19" stroke-linecap="round"/>
+    <path d="M428 468l-37 60" stroke="#123354" stroke-width="31" stroke-linecap="round"/>
+    <path d="M428 468l-37 60" stroke="#0c7b83" stroke-width="18" stroke-linecap="round"/>
+    <path d="M642 406c60 16 118 47 165 89" fill="none" stroke="#123354" stroke-width="31" stroke-linecap="round"/>
+    <path d="M642 406c60 16 118 47 165 89" fill="none" stroke="#128b8d" stroke-width="19" stroke-linecap="round"/>
+    <path d="M805 496l-72 45" stroke="#123354" stroke-width="31" stroke-linecap="round"/>
+    <path d="M805 496l-72 45" stroke="#0b7b83" stroke-width="18" stroke-linecap="round"/>
+
+    <path d="M472 302c21 70 93 105 183 87 8 49-7 89-55 103-75 22-163-7-181-72-14-51 6-91 53-118Z" fill="url(#shirt)" stroke="#123354" stroke-width="12" stroke-linejoin="round"/>
+    <path d="M510 326c47 23 94 28 143 13" fill="none" stroke="#0a5d65" stroke-width="11" stroke-linecap="round"/>
+
+    <path d="M515 255c0-69 44-117 108-117 65 0 108 48 108 117 0 62-43 108-108 108-64 0-108-46-108-108Z" fill="url(#face)" stroke="#123354" stroke-width="12"/>
+    <path d="M480 174c38-61 111-71 172-39 46-22 99-8 119 32-70-10-124 16-169 63-38 40-76 50-112 34-27-12-32-56-10-90Z" fill="url(#teal)" stroke="#123354" stroke-width="12" stroke-linejoin="round"/>
+    <path d="M536 171c50 22 101 16 158-21" fill="none" stroke="#a4e9df" stroke-width="10" stroke-linecap="round"/>
+    <path d="M617 136c38 10 75 25 112 45" fill="none" stroke="#0e3658" stroke-width="10" stroke-linecap="round"/>
+
+    <ellipse cx="590" cy="247" rx="12" ry="20" fill="#123354"/>
+    <ellipse cx="656" cy="247" rx="12" ry="20" fill="#123354"/>
+    <circle cx="594" cy="239" r="4" fill="#fff"/>
+    <circle cx="660" cy="239" r="4" fill="#fff"/>
+    <path d="M582 293c29 36 75 36 105 0" fill="none" stroke="#123354" stroke-width="12" stroke-linecap="round"/>
+    <path d="M614 315c16 8 35 7 51-2" fill="none" stroke="#f4b1a8" stroke-width="7" stroke-linecap="round"/>
+
+    <path d="M493 355c-38 11-63 35-75 74" fill="none" stroke="#123354" stroke-width="30" stroke-linecap="round"/>
+    <path d="M493 355c-38 11-63 35-75 74" fill="none" stroke="#e8f7f4" stroke-width="18" stroke-linecap="round"/>
+    <path d="M715 300c45 27 89 30 134 12" fill="none" stroke="#123354" stroke-width="31" stroke-linecap="round"/>
+    <path d="M715 300c45 27 89 30 134 12" fill="none" stroke="#88cbc5" stroke-width="18" stroke-linecap="round"/>
+
+    <g transform="translate(768 120)">
+      <path d="M47 120h166c14 0 25 11 25 25v8H22v-8c0-14 11-25 25-25Z" fill="#e6a641" stroke="#123354" stroke-width="12" stroke-linejoin="round"/>
+      <path d="M58 119c14-55 57-87 112-75 36 9 63 37 72 75Z" fill="url(#tray)" stroke="#123354" stroke-width="12" stroke-linejoin="round"/>
+      <path d="M13 160h236" stroke="#123354" stroke-width="13" stroke-linecap="round"/>
+      <path d="M86 159l57 44 62-44" fill="none" stroke="#123354" stroke-width="12" stroke-linejoin="round"/>
+      <path d="M118 35c0-16 15-27 32-27s32 11 32 27" fill="none" stroke="#123354" stroke-width="12" stroke-linecap="round"/>
+      <path d="M84 4c-27 37 13 52-13 92M151-14c-31 46 13 61-13 110M218 7c-27 38 11 53-11 89" fill="none" stroke="#d99a41" stroke-width="13" stroke-linecap="round"/>
+      <path d="M155 72c17 1 32 8 45 22" fill="none" stroke="#ffe39a" stroke-width="8" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <ellipse cx="624" cy="548" rx="150" ry="16" fill="#9eb1b8" opacity=".42"/>
+  <text x="624" y="686" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="113" font-weight="900" fill="#082848">Dashvanti</text>
+  <text x="624" y="760" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="47" font-weight="700" fill="#082848">One who delivers fast</text>
+</svg>

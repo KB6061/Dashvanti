@@ -1,0 +1,30 @@
+
+{% extends 'admin_app/admin_base.html' %}
+{% block admin_content %}
+{% if order.status != "DELIVERED" and order.status != "CANCELLED" and order.status != "REJECTED" %}<button type="button" data-cancel-order="/admin/order/{{ order.id }}/cancellation">Cancel order / full refund override</button>{% endif %}
+<a href="/admin/orders">← Orders</a><h1>Order #{{ order.id }}</h1>
+<div class="order-table-wrap"><table class="order-data-table"><caption>Order details</caption><tbody>
+<tr><th>Status</th><td>{{ order.status|title }}</td><th>Placed</th><td><time data-order-date datetime="{{ order.created_at|date:'c' }}">{{ order.created_at }}</time></td></tr>
+<tr><th>Restaurant</th><td>{{ restaurant.name }}</td><th>Customer</th><td>{{ customer.name }} · {{ customer.phone|default:'—' }}</td></tr>
+<tr><th>Delivery Partner</th><td>{{ driver.name|default:'Unassigned' }}</td><th>Mode</th><td>{{ order.mode|title }}</td></tr>
+<tr><th>Restaurant address</th><td>{{ restaurant.address }}</td><th>Delivery address</th><td>{{ order.address }}</td></tr>
+</tbody></table></div>
+<div class="order-table-wrap"><table class="order-data-table"><caption>Menu items</caption><thead><tr><th>Item</th><th>Quantity</th><th>Unit price</th><th>Instructions</th></tr></thead><tbody>
+{% for item in items %}<tr><td>{{ item.name }}</td><td>{{ item.quantity }}</td><td>&#36;{{ item.price|floatformat:2 }}</td><td>{{ item.special_instructions|default:'—' }}</td></tr>{% endfor %}
+</tbody></table></div>
+<div class="order-table-wrap"><table class="order-data-table"><caption>Charges</caption><tbody>
+<tr><th>Tax</th><td>&#36;{{ order.tax|floatformat:2 }}</td></tr><tr><th>Service fee</th><td>&#36;{{ order.service_fee|floatformat:2 }}</td></tr>
+<tr><th>Delivery fee</th><td>&#36;{{ order.delivery_fee|floatformat:2 }}</td></tr><tr><th>Discount</th><td>&#36;{{ order.discount|floatformat:2 }}</td></tr>
+<tr><th>Tip</th><td>&#36;{{ order.tip|floatformat:2 }}</td></tr><tr><th>Total</th><td>&#36;{{ order.total|floatformat:2 }}</td></tr>
+</tbody></table></div>
+<div class="order-table-wrap"><table class="order-data-table"><caption>Status history</caption><thead><tr><th>Status</th><th>Local date and time</th></tr></thead><tbody>
+{% for event in history %}<tr><td>{{ event.status|title }}</td><td><time data-order-date datetime="{{ event.created_at|date:'c' }}">{{ event.created_at }}</time></td></tr>{% empty %}<tr><td colspan="2">No status updates recorded.</td></tr>{% endfor %}
+</tbody></table></div>
+
+{% if can_reassign %}<section class="card"><h2>Assign a nearby delivery partner</h2><p>Available drivers within 3 driving miles of the restaurant, using GPS from the last 2 minutes.</p>
+{% if nearby_drivers %}<form method="post">{% csrf_token %}<input type="hidden" name="expected_driver_id" value="{{ order.driver_id|default_if_none:'' }}">
+<label>Driver<select name="driver_id" required>{% for candidate in nearby_drivers %}<option value="{{ candidate.id }}">{{ candidate.name }} · {{ candidate.distance_miles }} mi · {{ candidate.drive_minutes }} min · {{ candidate.phone }}</option>{% endfor %}</select></label>
+<label>Reason<input name="reason" required minlength="3" maxlength="250" placeholder="Pickup delayed"></label><button type="submit">Assign driver</button></form>
+{% else %}<p>No available drivers with recent GPS within 3 driving miles. Refresh to check again.</p>{% endif %}
+</section>{% endif %}
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="admin-workspace">
+  {% include 'admin_app/_sidebar.html' %}
+  <section class="admin-main">
+    <header class="admin-topbar">
+      <form method="get" action="/admin/users"><input type="hidden" name="role" value="all"><span>⌕</span><input name="q" placeholder="Search orders, drivers, restaurants..." aria-label="Search all platform records"></form>
+      <div class="admin-system"><i></i> System Online</div>
+      <form method="post" action="/admin/logout">{% csrf_token %}<button type="submit">Logout</button></form>
+      <div class="admin-identity"><strong>System Admin</strong><small>Full access</small></div>
+    </header>
+    <div class="admin-page">{% block admin_content %}{% endblock %}</div>
+  </section>
+</div>
+{% endblock %}

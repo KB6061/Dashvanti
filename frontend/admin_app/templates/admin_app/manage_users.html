@@ -1,0 +1,52 @@
+{% extends 'admin_app/admin_base.html' %}
+{% block admin_content %}
+<div class="admin-title"><div><h1>{{ title }}</h1><span class="admin-live">{{ rows|length }} results</span></div><p>Search, add, update, or permanently delete database records.</p></div>
+<form class="admin-filters" method="get">
+  {% if not role %}<input type="hidden" name="role" value="all">{% endif %}
+  <label><span>Search</span><input name="q" value="{{ q }}" placeholder="Name, email, phone, cuisine, address or vehicle"></label>
+  {% if role == 'restaurant' %}<label><span>Status</span><select name="status"><option value="">All restaurants</option><option value="open" {% if status == 'open' %}selected{% endif %}>Open</option><option value="closed" {% if status == 'closed' %}selected{% endif %}>Closed</option></select></label>
+  {% elif role == 'driver' %}<label><span>Status</span><select name="status"><option value="">All drivers</option><option value="online" {% if status == 'online' %}selected{% endif %}>Online</option><option value="offline" {% if status == 'offline' %}selected{% endif %}>Offline</option></select></label>
+  {% elif role == 'customer' %}<label><span>Order mode</span><select name="status"><option value="">All customers</option><option value="delivery" {% if status == 'delivery' %}selected{% endif %}>Delivery</option><option value="pickup" {% if status == 'pickup' %}selected{% endif %}>Pickup</option></select></label>{% endif %}
+  <button type="submit">Search</button><a href="{% if role == 'restaurant' %}/admin/restaurants{% elif role == 'driver' %}/admin/drivers{% else %}/admin/users?role={% if role %}{{ role }}{% else %}all{% endif %}{% endif %}">Clear</a>
+</form>
+{% if role %}
+<details class="admin-create"><summary>Add {{ role|title }}</summary>
+  <form method="post" class="admin-edit-grid">{% csrf_token %}<input type="hidden" name="action" value="create"><input type="hidden" name="role" value="{{ role }}">
+    <label>Name<input name="name" required maxlength="120"></label><label>Email<input name="email" type="email" required maxlength="254"></label>
+    <label>Phone<input name="phone" maxlength="30"></label><label>Temporary password<input name="password" type="password" minlength="5" required></label>
+    {% if role == 'customer' %}<label>Order mode<select name="order_mode"><option value="delivery">Delivery</option><option value="pickup">Pickup</option></select></label>
+    {% elif role == 'restaurant' %}
+    <label>Restaurant name<input name="restaurant_name" required maxlength="120"></label><label>Cuisine<input name="cuisine" value="Indian" required maxlength="80"></label>
+    <label>Type<select name="kind"><option value="restaurant">Restaurant</option><option value="store">Store</option></select></label><label>Address<input name="address" maxlength="500"></label>
+    <label>Opening<input name="opening" type="time" value="09:00" required></label><label>Closing<input name="closing" type="time" value="22:00" required></label>
+    <label>Delivery minutes<input name="delivery_minutes" type="number" min="5" max="240" value="30" required></label><label class="admin-check"><input name="is_open" type="checkbox"> Open for orders</label>
+    <label class="admin-wide">Description<textarea name="description" maxlength="1000" rows="2"></textarea></label>
+    {% elif role == 'driver' %}<label>Vehicle type<input name="vehicle_type" maxlength="80"></label><label>Vehicle number<input name="vehicle_number" maxlength="80"></label><label class="admin-check"><input name="online" type="checkbox"> Online</label>{% endif %}
+    <button type="submit">Save {{ role }}</button>
+  </form>
+</details>
+{% endif %}
+<section class="admin-data-card"><div class="admin-table-scroll"><table class="admin-management-table">
+<thead><tr><th>ID</th><th>Name and contact</th><th>Role details</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+{% for row in rows %}<tr>
+<td>#{{ row.id }}</td>
+<td><strong>{% if row.role == 'restaurant' %}{{ row.restaurant_name }}{% else %}{{ row.name }}{% endif %}</strong><small>{{ row.email }}<br>{{ row.phone|default:'No phone' }}</small></td>
+<td>{% if row.role == 'restaurant' %}<strong>{{ row.cuisine }} · {{ row.kind|title }}</strong><small>{{ row.address|default:'No address' }}<br>{{ row.opening }}–{{ row.closing }} · {{ row.delivery_minutes }} min</small>{% elif row.role == 'driver' %}<strong>{{ row.vehicle_type|default:'Vehicle pending' }}</strong><small>{{ row.vehicle_number|default:'No vehicle number' }}</small>{% else %}<strong>Customer</strong><small>{{ row.order_mode|title }} preference</small>{% endif %}</td>
+<td>{% if row.role == 'restaurant' %}<span class="admin-status {% if row.is_open %}online{% else %}offline{% endif %}">{% if row.is_open %}Open{% else %}Closed{% endif %}</span>{% elif row.role == 'driver' %}<span class="admin-status {% if row.online %}online{% else %}offline{% endif %}">{% if row.online %}Online{% else %}Offline{% endif %}</span>{% else %}<span class="admin-status online">Active</span>{% endif %}</td>
+<td class="admin-actions"><details><summary>Edit</summary>
+<form method="post" class="admin-edit-grid">{% csrf_token %}<input type="hidden" name="action" value="update"><input type="hidden" name="user_id" value="{{ row.id }}"><input type="hidden" name="role" value="{{ row.role }}">
+<label>Name<input name="name" required maxlength="120" value="{{ row.name }}"></label><label>Email<input name="email" type="email" required maxlength="254" value="{{ row.email }}"></label>
+<label>Phone<input name="phone" maxlength="30" value="{{ row.phone }}"></label><label>New password<input name="password" type="password" minlength="5" placeholder="Leave blank to keep"></label>
+{% if row.role == 'customer' %}<label>Order mode<select name="order_mode"><option value="delivery" {% if row.order_mode == 'delivery' %}selected{% endif %}>Delivery</option><option value="pickup" {% if row.order_mode == 'pickup' %}selected{% endif %}>Pickup</option></select></label>
+{% elif row.role == 'restaurant' %}
+<label>Restaurant name<input name="restaurant_name" required maxlength="120" value="{{ row.restaurant_name }}"></label><label>Cuisine<input name="cuisine" required maxlength="80" value="{{ row.cuisine }}"></label>
+<label>Type<select name="kind"><option value="restaurant" {% if row.kind == 'restaurant' %}selected{% endif %}>Restaurant</option><option value="store" {% if row.kind == 'store' %}selected{% endif %}>Store</option></select></label><label>Address<input name="address" maxlength="500" value="{{ row.address }}"></label>
+<label>Opening<input name="opening" type="time" value="{{ row.opening }}" required></label><label>Closing<input name="closing" type="time" value="{{ row.closing }}" required></label>
+<label>Delivery minutes<input name="delivery_minutes" type="number" min="5" max="240" value="{{ row.delivery_minutes }}" required></label><label class="admin-check"><input name="is_open" type="checkbox" {% if row.is_open %}checked{% endif %}> Open for orders</label>
+<label class="admin-wide">Description<textarea name="description" maxlength="1000" rows="2">{{ row.description }}</textarea></label>
+{% elif row.role == 'driver' %}<label>Vehicle type<input name="vehicle_type" maxlength="80" value="{{ row.vehicle_type }}"></label><label>Vehicle number<input name="vehicle_number" maxlength="80" value="{{ row.vehicle_number }}"></label><label class="admin-check"><input name="online" type="checkbox" {% if row.online %}checked{% endif %}> Online</label>{% endif %}
+<button type="submit">Update permanently</button></form></details>
+<form method="post" onsubmit="return confirm('Permanently delete this {{ row.role }} and related records?')">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ row.id }}"><input type="hidden" name="role" value="{{ row.role }}"><button class="admin-delete" type="submit">Delete</button></form>
+</td></tr>{% empty %}<tr><td colspan="5">No matching records found.</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% endblock %}

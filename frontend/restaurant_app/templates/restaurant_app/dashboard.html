@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="restaurant-console" data-auto-refresh>
+  <aside class="restaurant-sidebar">
+    <div class="restaurant-mini-brand">
+
+      <span>{{ profile.name|default:'Dashvanti' }}</span>
+    </div>
+    <nav>
+      <a class="active" href="/restaurant/dashboard">Dashboard</a>
+      <a href="/restaurant/orders">Live Orders</a>
+      <a href="/restaurant/menu">Menu Manager</a>
+      <a href="/restaurant/stats">Insights</a>
+      <a href="/restaurant/profile">Settings</a>
+    </nav>
+  </aside>
+
+  <div class="restaurant-workspace">
+    <div class="restaurant-topbar">
+      <div>
+        <p class="eyebrow">Restaurant command center</p>
+        <h1>{{ profile.name|default:'Restaurant Dashboard' }}</h1>
+      </div>
+      <div class="restaurant-status {% if profile.is_open %}open{% endif %}">
+        {% if profile.is_open %}Open{% else %}Closed{% endif %}
+      </div>
+    </div>
+    <section class="restaurant-live-controls">
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="dashboard_action" value="availability">
+        <label><input type="checkbox" name="is_open" {% if profile.is_open %}checked{% endif %}> Accepting orders</label>
+        <button>Update</button>
+      </form>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="dashboard_action" value="hours">
+        <label>Open <input name="opening" value="{{ profile.opening|default:'09:00' }}" pattern="(?:[01]\d|2[0-3]):[0-5]\d"></label>
+        <label>Close <input name="closing" value="{{ profile.closing|default:'22:00' }}" pattern="(?:[01]\d|2[0-3]):[0-5]\d"></label>
+        <button>Save hours</button>
+      </form>
+    </section>
+
+
+    <section class="role-map-card restaurant-dashboard-map">
+      <div class="role-map-head"><div><p class="eyebrow">RESTAURANT LOCATION</p><h2>Pickup and delivery map</h2><span>{{ profile.address|default:'Add the restaurant address in settings.' }}</span></div></div>
+      <div class="dashvanti-google-map" data-google-map data-map-show-name="true" data-map-address="{{ profile.address }}" data-map-title="{{ profile.name }}" aria-label="Restaurant location map"></div>
+      <p class="map-load-status" data-map-status>Loading Google Maps…</p>
+    </section>
+
+    <div class="restaurant-kpis">
+      <article>
+        <span>Sales Today</span>
+        <strong>${{ stats.revenue|floatformat:2 }}</strong>
+      </article>
+      <article>
+        <span>New Orders</span>
+        <strong>{{ new_orders }}</strong>
+      </article>
+      <article>
+        <span>Prep Time</span>
+        <strong>{{ prep_time }} min</strong>
+      </article>
+      <article>
+        <span>Total Deliveries</span>
+        <strong>{{ stats.orders }}</strong>
+      </article>
+    </div>
+
+    <div class="order-board">
+      {% for lane in lane_cards %}
+      <section class="order-lane lane-{{ forloop.counter }}">
+        <h2>{{ lane.title }}</h2>
+        <div class="order-table-wrap"><table class="order-data-table" data-order-table><thead><tr><th>Order</th><th>Customer</th><th>Phone / Mode / Total</th><th>Actions / Status</th></tr></thead><tbody>
+        {% for order in lane.orders %}
+        <tr data-order-url="/restaurant/order/{{ order.id }}" tabindex="0">
+          <td><a href="/restaurant/order/{{ order.id }}">#{{ order.id }}</a></td>
+          <td>{{ order.customer_name|default:'Customer' }}</td>
+          <td>{{ order.customer_phone|default:'no phone' }}<br>{{ order.mode|title }} · &#36;{{ order.total|floatformat:2 }}</td><td>
+          {% if order.actions %}
+          <div class="ticket-actions">
+            {% for value,label in order.actions %}
+            <form method="post" action="/restaurant/order/{{ order.id }}">
+              {% csrf_token %}
+              <button name="status" value="{{ value }}">{{ label }}</button>
+            </form>
+            {% endfor %}
+          </div>
+          {% else %}
+          <em>{{ order.status|title }}</em>
+          {% endif %}
+        </td></tr>
+        {% empty %}<tr><td colspan="4">No orders here.</td></tr>
+        {% endfor %}
+        </tbody></table></div>
+      </section>
+      {% endfor %}
+    </div>
+
+    <div class="restaurant-panels">
+      <section class="menu-hub">
+        <div class="panel-head">
+          <h2>Menu Management Hub</h2>
+          <a href="/restaurant/menu">Add or edit items</a>
+        </div>
+        <div class="menu-table">
+          {% for item in menu_items %}
+          <a href="/restaurant/menu/{{ item.id }}">
+            <span>{{ item.name }}</span>
+            <strong>${{ item.price }}</strong>
+            <em>{% if item.available %}On{% else %}Off{% endif %}</em>
+          </a>
+          {% empty %}
+          <p>No menu items yet.</p>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="analytics-panel">
+        <div class="panel-head">
+          <h2>Sales Trends and Analytics</h2>
+          <a href="/restaurant/stats">View insights</a>
+        </div>
+        <div class="mini-chart" aria-label="Hourly volume chart">
+          {% for point in chart_points %}
+          <span style="height:{{ point }}px"></span>
+          {% endfor %}
+        </div>
+        <div class="top-sellers">
+          <h3>Top Sellers</h3>
+          {% for item in top_items %}
+          <p><strong>{{ forloop.counter }}</strong> {{ item.name }}{% if item.units %} <span>{{ item.units }}</span>{% endif %}</p>
+          {% empty %}
+          <p>Sales will appear after completed orders.</p>
+          {% endfor %}
+        </div>
+      </section>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block content %}
+<p class="eyebrow">{{ portal }} portal</p>
+<h1>Your orders</h1>
+<div class="order-table-wrap"><table class="order-data-table" data-order-table><thead><tr><th>Order</th><th>Date</th><th>Restaurant / Customer</th><th>Mode</th><th>Status</th><th>Total</th><th>Actions</th></tr></thead><tbody>
+{% for order in orders %}<tr data-order-url="/{{ portal }}/order/{{ order.id }}" tabindex="0"><td>#{{ order.id }}</td><td><time data-order-date datetime="{{ order.created_at }}">{{ order.created_at }}</time></td><td>{{ order.restaurant_name }}<br>{{ order.customer_name }}</td><td>{{ order.mode|title }}</td><td>{{ order.status|title }}</td><td>&#36;{{ order.total|floatformat:2 }}</td><td><a href="/{{ portal }}/order/{{ order.id }}">View details</a>{% if portal != 'driver' %}<br><a data-report-popup href="/{{ portal }}/order/{{ order.id }}/bill">View order bill</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="7">No orders yet.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

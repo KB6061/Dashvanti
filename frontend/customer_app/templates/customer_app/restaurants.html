@@ -1,0 +1,162 @@
+{% extends 'base.html' %}
+{% block content %}
+      {% if active_order %}
+      <section class="customer-panel tracking-panel">
+        <div class="tracking-panel-head"><div><p class="eyebrow">LIVE ORDER</p><h2>Order #{{ active_order.id }}</h2></div><a href="/customer/order/{{ active_order.id }}/track">Track order</a></div>
+        <div class="tracking-details"><div class="tracking-map"><span></span></div><div><strong>{{ active_order.status|title }}</strong><p>{{ active_order.mode|title }} order in progress</p><div class="tracking-progress"><span></span></div></div></div>
+      </section>
+      {% endif %}
+<section class="customer-console">
+  <section class="customer-hero">
+    <div>
+      <p class="eyebrow">DELIVERY OR PICKUP</p>
+      <h1>Food you love, delivered your way.</h1>
+      <p class="customer-hero-copy">Discover neighborhood favorites, add them to your cart, and follow every order in one place.</p>
+    </div>
+  </section>
+  {% if home_content.banner.enabled %}
+  <section class="dashvanti-home-banner">
+    {% if home_content.banner.media_file_id %}<img src="/customer/files/{{ home_content.banner.media_file_id }}" alt="">{% endif %}
+    <div><p class="eyebrow">DASHVANTI</p><h2>{{ home_content.banner.title }}</h2><p>{{ home_content.banner.description }}</p></div>
+  </section>
+  {% endif %}
+  {% if home_content.promotions %}
+  <section class="dashvanti-deals" aria-label="Current offers">{% for deal in home_content.promotions %}<article><p class="eyebrow">{{ deal.percent }}% OFF</p><h2>{{ deal.title }}</h2><p>{{ deal.description }}</p><strong>{{ deal.code }}</strong></article>{% endfor %}</section>
+  {% endif %}
+
+  <div class="customer-layout">
+    <section class="customer-menu-zone" id="menu-board">
+      <div class="customer-menu-intro">
+        <div>
+          <p class="eyebrow">ORDER YOUR WAY</p>
+          <h2>What are you craving?</h2>
+          <form class="customer-location-form" data-customer-location-form method="post" action="/customer/location">{% csrf_token %}</form>
+          <div hidden style="display:none" class="customer-location" data-customer-location data-address-open>
+            <span class="customer-location-pin" aria-hidden="true">●</span>
+            <span><small>CURRENT DELIVERY LOCATION</small><strong data-customer-location-text>{% if customer_location.address %}{{ customer_location.address }}{% elif customer_location %}{{ customer_location.latitude|floatformat:5 }}, {{ customer_location.longitude|floatformat:5 }}{% else %}Set your delivery address{% endif %}</strong><em data-customer-location-status>{% if customer_location.address %}Google Maps address saved{% elif customer_location %}Live GPS saved{% else %}Search worldwide or use live GPS{% endif %}</em></span>
+            <span class="customer-location-change">Change</span>
+          </div>
+        </div>
+        <form class="customer-mode-form" data-order-mode-form method="post" action="/customer/order-mode">{% csrf_token %}</form>
+        <div class="dash-mode customer-mode" aria-label="Order mode">
+          <button class="{% if order_mode == 'delivery' %}active{% endif %}" data-order-mode="delivery" type="button">Delivery</button>
+          <button class="{% if order_mode == 'pickup' %}active{% endif %}" data-order-mode="pickup" type="button">Pickup</button>
+        </div>
+      </div>
+
+      <section class="pickup-explorer{% if order_mode != 'pickup' %} is-hidden{% endif %}" data-pickup-explorer data-customer-latitude="{% if customer_location %}{{ customer_location.latitude }}{% endif %}" data-customer-longitude="{% if customer_location %}{{ customer_location.longitude }}{% endif %}">
+        <div class="pickup-store-column">
+          <div class="pickup-explorer-head"><div><p class="eyebrow">PICKUP NEAR YOU</p><h2>Restaurants and menus</h2></div><span data-pickup-count>{{ restaurants|length }} restaurants</span></div>
+          <div class="pickup-store-list">
+            {% for r in restaurants %}
+            <article class="pickup-store{% if forloop.first %} selected{% endif %}" data-pickup-store data-restaurant-id="{{ r.id }}" data-restaurant-name="{{ r.name }}" data-restaurant-address="{{ r.address }}">
+              <button class="pickup-store-select" type="button" data-pickup-store-select>
+                <span class="pickup-store-summary">
+                  <span class="pickup-store-title"><strong>{{ r.name }}</strong><span class="pickup-store-favorite" aria-hidden="true">♡</span></span>
+                  <span class="pickup-store-stats"><span class="pickup-store-rating">★ {{ r.rating|floatformat:1 }} ({{ r.rating_count }})</span><span aria-hidden="true">·</span><span data-restaurant-distance>Distance pending</span></span>
+                  <span class="pickup-store-hours"><span class="{% if r.is_open %}open{% else %}closed{% endif %}"><i aria-hidden="true"></i>{% if r.is_open %}Open{% else %}Closed{% endif %}</span><span aria-hidden="true">·</span><span>{% if r.is_open %}Closes{% else %}Opens{% endif %} at {% if r.is_open %}{{ r.closing_label }}{% else %}{{ r.opening_label }}{% endif %}</span></span>
+                </span>
+                <em>Map</em>
+              </button>
+              <div class="pickup-menu-carousel">
+                <button class="pickup-menu-arrow previous" type="button" data-menu-scroll="-1" aria-label="See previous menu items">‹</button>
+                <div class="pickup-menu-rail" data-menu-rail>
+                  {% for item in r.matches %}
+                  <article class="pickup-menu-card" tabindex="0" role="button" data-menu-popup data-restaurant="{{ item.restaurant_name }}" data-id="{{ item.id }}" data-name="{{ item.name }}" data-description="{{ item.description }}" data-price="{{ item.price }}" data-category="{{ item.category }}" data-veg="{{ item.veg|yesno:'Vegetarian,Non vegetarian' }}">
+                    <div class="pickup-menu-photo">
+                      {% if item.photo_url %}<img src="{{ item.photo_url }}?size=menu" data-full-src="{{ item.photo_url }}" width="320" height="200" alt="{{ item.name }}" loading="eager" decoding="async">{% else %}<span>{{ item.name|first }}</span>{% endif %}
+                      <form method="post" action="/customer/cart" data-menu-cart-add>{% csrf_token %}<input type="hidden" name="menu_item_id" value="{{ item.id }}"><input type="hidden" name="quantity" value="1"><button type="submit" aria-label="Add {{ item.name }} to cart">+</button></form>
+                    </div>
+                    <div class="pickup-menu-copy">
+                      <h3 title="{{ item.name }}">{{ item.name }}</h3>
+                      <strong>&#36;{{ item.price }}</strong>
+                      <em data-menu-add-status aria-live="polite"></em>
+                    </div>
+                  </article>
+                  {% empty %}
+                  <p class="pickup-menu-empty">No available menu items.</p>
+                  {% endfor %}
+                </div>
+                <button class="pickup-menu-arrow next" type="button" data-menu-scroll="1" aria-label="See more menu items">›</button>
+              </div>
+            </article>
+            {% empty %}
+            <p class="pickup-menu-empty">No restaurants are available.</p>
+            {% endfor %}
+          </div>
+        </div>
+        <section class="pickup-map-panel">
+          <div class="pickup-map-head"><div><p class="eyebrow">PICKUP MAP</p><h2 data-pickup-map-name>Select a restaurant</h2><span data-pickup-map-address>Restaurant locations appear automatically.</span></div></div>
+          <div class="pickup-map-canvas">
+            <label class="pickup-map-search"><input type="checkbox" data-map-search-move><span>Search as I move the map</span></label>
+            <div id="customer-pickup-map" class="dashvanti-google-map pickup-google-map" data-google-map data-map-markers-id="customer-restaurant-markers" data-map-current-location="true" aria-label="Restaurant pickup map"></div>
+          </div>
+          <p class="map-load-status" data-map-status>Loading Google Maps…</p>
+        </section>
+      </section>
+      {{ restaurant_markers|json_script:"customer-restaurant-markers" }}
+
+      <div class="delivery-browser{% if order_mode == 'pickup' %} is-hidden{% endif %}" data-delivery-browser>
+        <section class="category-strip" aria-label="Food categories">
+        {% for category in categories %}
+        <a href="?mode={{ order_mode }}&q={{ category|urlencode }}">{{ category }}</a>
+        {% endfor %}
+      </section>
+
+      <div data-restaurant-shelves>{% include "customer_app/restaurant_rows.html" %}</div>
+      </div>
+    </section>
+
+    <aside class="customer-right-rail" data-floating-cart>
+      <button type="button" class="floating-cart-toggle" data-cart-toggle aria-expanded="true" aria-controls="floating-cart-content">Cart <span>−</span></button>
+      <section class="customer-panel cart-panel" id="floating-cart-content">
+        <div class="cart-panel-head"><div><p class="eyebrow">YOUR ORDER</p><h2>Cart</h2></div><a href="/customer/cart">Edit</a></div>
+        {% for item in cart.items %}
+        <div class="cart-line"><span>{{ item.name|first }}</span><div><strong>{{ item.name }}</strong><small>${{ item.subtotal }}</small></div><em>{{ item.quantity }}</em></div>
+        {% empty %}
+        <p class="cart-empty">Your cart is empty. Add a favorite to get started.</p>
+        {% endfor %}
+        <div class="cart-total"><span>Subtotal</span><strong>${{ cart.subtotal }}</strong><span>Delivery fee</span><strong>${{ cart.delivery_fee }}</strong></div>
+        <a class="checkout-button" href="/customer/checkout">Continue to checkout</a>
+      </section>
+    </aside>
+
+    <section class="customer-left-rail">
+
+      <section class="customer-panel review-panel"><p class="eyebrow">CUSTOMER REVIEWS</p><h2>People love Dashvanti</h2>{% for review in reviews %}<blockquote><strong>{{ review.name }}</strong><span>5 star</span><p>{{ review.text }}</p></blockquote>{% endfor %}</section>
+      <section class="customer-panel rewards-panel"><p class="eyebrow">OFFERS & REWARDS</p><h2>More ways to save</h2>{% for reward in rewards %}<p class="reward-row">{{ reward }}<span>Active</span></p>{% endfor %}</section>
+    </section>
+  </div>
+</section>
+
+<div class="customer-address-backdrop" data-address-close></div>
+<aside class="customer-address-drawer" data-address-drawer aria-hidden="true" aria-label="Choose delivery address">
+  <div class="customer-address-head">
+    <button type="button" data-address-close aria-label="Close address search">×</button>
+    <h2>Addresses</h2>
+  </div>
+  <label class="visually-hidden" for="customer-address-search">Enter your address</label>
+  <div class="customer-address-search">
+    <span aria-hidden="true">⌕</span>
+    <gmp-place-autocomplete id="customer-address-search" data-address-autocomplete placeholder="Enter your address"></gmp-place-autocomplete>
+  </div>
+  <p class="customer-address-help">Choose a Google Maps suggestion to set your exact location.</p>
+  <button class="customer-live-location" type="button" data-use-live-location>
+    <span aria-hidden="true">◎</span>
+    <span><strong>Use my live GPS location</strong><small>Locate and save your current address</small></span>
+  </button>
+  <p class="customer-address-status" data-address-status aria-live="polite"></p>
+  <div class="customer-saved-addresses">
+    <div class="customer-saved-head"><h3>Saved addresses</h3><a href="/customer/addresses">Add or edit</a></div>
+    {% for address in saved_addresses %}
+    <button type="button" class="customer-saved-address" data-saved-address data-address="{{ address.details }}" data-address-label="{{ address.label }}">
+      <span class="customer-address-radio" aria-hidden="true"></span>
+      <span><strong>{{ address.label }}</strong><small>{{ address.details }}</small></span>
+      <em aria-hidden="true">›</em>
+    </button>
+    {% empty %}
+    <p class="customer-address-empty">No saved addresses yet. Search above to set your current address.</p>
+    {% endfor %}
+  </div>
+</aside>
+{% endblock %}

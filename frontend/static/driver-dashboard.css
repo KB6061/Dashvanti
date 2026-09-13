@@ -1,0 +1,48 @@
+body.driver-dashboard-page>.site-header{display:flex}
+body.driver-portal .site-header{background:#f7f8f2;min-height:116px;height:auto;flex-wrap:wrap}
+body.driver-portal .site-header .brand{display:flex;align-items:center;width:210px;height:104px;flex-shrink:0}
+body.driver-portal .site-header .brand img{width:200px;height:100px;max-width:100%;object-fit:contain;mix-blend-mode:multiply}
+body.driver-dashboard-page main{max-width:1200px;margin:auto;padding:32px}
+body.driver-portal .driver-console{grid-template-columns:210px minmax(0,1fr);gap:24px;min-height:0;background:transparent}
+body.driver-portal .driver-sidebar{align-self:start;background:#fff;border:1px solid var(--dash-border);border-radius:var(--dash-radius);padding:18px 12px}
+body.driver-portal .driver-sidebar nav a{display:block;text-align:left;font-size:14px;font-weight:650;padding:11px 12px;min-height:44px;min-width:0}
+body.driver-portal .driver-sidebar-label{padding:8px 12px 16px;margin-bottom:12px;border-bottom:1px solid var(--dash-border);font-size:18px;font-weight:700}
+body.driver-portal .driver-topbar{display:block;padding:16px 0;background:transparent;border-bottom:1px solid var(--dash-border)}
+body.driver-portal .driver-topbar h1{font-size:clamp(24px,3vw,32px);margin:0}
+body.driver-portal .driver-welcome{display:flex;flex-wrap:wrap;gap:16px;margin:16px 0;padding:20px;background:#fff;border:1px solid var(--dash-border);border-radius:var(--dash-radius)}
+body.driver-portal .driver-welcome h2{font-size:20px;margin:0 0 8px}
+body.driver-portal .driver-welcome>div:nth-child(2){flex:1;min-width:180px}
+body.driver-portal .driver-status-form,body.driver-portal .driver-location-form{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0}
+body.driver-portal .driver-grid{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;padding:0}
+body.driver-portal .driver-grid>section{grid-column:auto;grid-row:auto;min-width:0;padding:20px}
+body.driver-portal .driver-grid>section h2{font-size:18px;text-transform:none;line-height:1.35;margin-bottom:16px}
+body.driver-portal .driver-chat{grid-column:1/-1}
+body.driver-portal .driver-map{height:360px;min-height:260px;border-radius:12px}
+body.driver-portal .driver-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
+body.driver-portal .driver-job-card{overflow-wrap:anywhere}
+body.driver-portal .driver-actions{display:flex;flex-wrap:wrap;gap:8px}
+body.driver-portal .driver-actions button,body.driver-portal .driver-welcome button{min-height:44px}
+body.driver-portal .driver-chart span{background:var(--dash-primary)}
+@media(max-width:1000px){
+ body.driver-portal .driver-console{grid-template-columns:1fr}
+ body.driver-portal .driver-sidebar nav{display:flex;overflow-x:auto;gap:6px}
+ body.driver-portal .driver-sidebar nav a{white-space:nowrap;flex-shrink:0}
+ body.driver-portal .driver-sidebar-label{padding:4px 12px 12px}
+}
+@media(max-width:650px){
+ body.driver-dashboard-page main{padding:18px 12px}
+ body.driver-portal .site-header{padding:12px;gap:8px}
+ body.driver-portal .site-header .brand{width:160px;height:90px}
+ body.driver-portal .site-header .brand img{width:160px;height:90px}
+ body.driver-portal .site-header nav{display:flex;flex-wrap:wrap;gap:8px;max-width:100%}
+ body.driver-portal .driver-grid{grid-template-columns:minmax(0,1fr)}
+ body.driver-portal .driver-grid>section{padding:16px}
+ body.driver-portal .driver-welcome{padding:16px}
+ body.driver-portal .driver-map{height:300px}
+ body.driver-portal .driver-status-form,body.driver-portal .driver-location-form{width:100%}
+}
+
+.driver-presence-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+body.driver-portal .driver-presence-controls button{font-size:13px;padding:7px 12px;min-height:36px;background:#edf3e8;color:#173f30;border:1px solid #d7e1d3}
+body.driver-portal .driver-presence-controls button[aria-pressed="true"]{background:#20583e;color:white}
+.driver-presence-controls small{flex-basis:100%;font-size:13px}

@@ -1,0 +1,65 @@
+{% extends "auth.html" %}
+
+{% load static %}
+{% block content %}
+{% if auth_action == 'login' or auth_action == 'register' %}
+<section class="customer-welcome">
+  <img src="{% static 'logo.jpeg' %}" alt="Dashvanti food delivery" class="welcome-logo">
+  <p class="eyebrow">Good food. Close to home.</p>
+  <h1>Your next favorite meal<br>starts here.</h1>
+  <p>Discover local flavors, order your favorites, and enjoy delivery or pickup on your schedule.</p>
+</section>
+<dialog class="customer-auth-popup" id="customer-auth-popup" data-open-auth="{{ open_auth }}" aria-labelledby="customer-auth-title">
+  <button class="auth-popup-close" type="button" aria-label="Close">&times;</button>
+  <h2 id="customer-auth-title">Sign in</h2>
+  <form method="post" action="/customer/login" data-auth-form="login" hidden>
+    {% csrf_token %}{{ customer_login_form.as_p }}
+    <button type="submit">Sign In</button>
+    <a href="/customer/forgot">Forgot password?</a>
+  </form>
+  <form method="post" action="/customer/register" data-auth-form="register" hidden>
+    {% csrf_token %}{{ customer_register_form.as_p }}
+    <button type="submit">Sign Up</button>
+  </form>
+</dialog>
+<style>
+body:has(.customer-welcome){background:#f7f8f2}
+body:has(.customer-welcome) .site-header{height:auto;min-height:120px;justify-content:flex-end}
+body:has(.customer-welcome) .site-header .brand{display:none}
+body:has(.customer-welcome) .site-header .brand img{height:96px;max-width:190px;mix-blend-mode:multiply}
+body:has(.customer-welcome) .public-auth-actions .auth-action{background:#205b42;border-color:#205b42;color:white}
+.customer-welcome{text-align:center;max-width:800px;margin:0 auto;padding:18px 16px 60px}
+.customer-welcome .welcome-logo{width:330px;max-width:75vw;height:auto;mix-blend-mode:multiply;margin-bottom:24px}
+.customer-welcome h1{font-size:clamp(34px,5vw,60px);line-height:1.12;color:#173f30;margin:16px 0 24px}
+.customer-welcome>p:last-child{font-size:19px;line-height:1.7;max-width:590px;margin:auto;color:#52645b}
+.customer-auth-popup{border:0;border-radius:18px;width:min(460px,92vw);max-height:90dvh;padding:32px;background:#f7f8f2;color:#173f30;box-shadow:0 20px 70px #0004}
+.customer-auth-popup::backdrop{background:#0008}
+.customer-auth-popup .auth-popup-close{position:absolute;right:10px;top:6px;background:transparent;border:0;color:#173f30;font-size:28px;padding:0 8px}
+.customer-auth-popup form[hidden]{display:none}
+.customer-auth-popup form>button{width:100%;margin-bottom:14px}
+@media(max-width:480px){body:has(.customer-welcome) .site-header{padding:12px;gap:8px}body:has(.customer-welcome) .site-header .brand img{height:72px}.public-auth-actions{gap:6px}}
+</style>
+<script>
+(() => {
+  const popup = document.getElementById('customer-auth-popup');
+  function openForm(action) {
+    popup.querySelectorAll('[data-auth-form]').forEach(form => { form.hidden = form.dataset.authForm !== action; });
+    document.getElementById('customer-auth-title').textContent = action === 'login' ? 'Welcome back' : 'Create your account';
+    if (!popup.open) popup.showModal();
+    popup.querySelector('form:not([hidden]) input:not([type=hidden])')?.focus();
+  }
+  document.addEventListener('click', event => {
+    const link = event.target.closest('.public-auth-actions a');
+    if (!link) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    openForm(link.classList.contains('sign-up') ? 'register' : 'login');
+  }, true);
+  popup.querySelector('.auth-popup-close').onclick = () => popup.close();
+  if (popup.dataset.openAuth) openForm(popup.dataset.openAuth);
+})();
+</script>
+{% else %}
+{{ block.super }}
+{% endif %}
+{% endblock %}

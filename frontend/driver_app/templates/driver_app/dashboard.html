@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="driver-console">
+  <aside class="driver-sidebar">
+    <div class="driver-sidebar-label">Driver workspace</div>
+    <nav>
+      <a class="active" href="/driver/dashboard">Dashboard</a>
+      <a href="/driver/orders">Track Order</a>
+      <a href="/driver/orders">Active Deliveries</a>
+      <a href="/driver/earnings">Earning Reports</a>
+      <a href="/driver/profile">Profile</a>
+      <a href="/driver/files">Support</a>
+    </nav>
+  </aside>
+
+  <div class="driver-workspace">
+    <header class="driver-topbar">
+      <p class="eyebrow">Driver command center</p>
+      <h1>Driver Dashboard</h1>
+    </header>
+
+      <section class="driver-map-panel">
+        <h2>Active Orders & Mapping</h2>
+        {{ map_markers|json_script:"driver-map-markers" }}
+        <div id="driver-live-map" class="driver-map dashvanti-google-map" data-google-map data-map-markers-id="driver-map-markers" data-map-driver-location="true" aria-label="Driver active delivery map"></div>
+        <p class="map-load-status" data-map-status>Loading Google Maps…</p>
+        <div class="driver-tools">
+          <a href="/driver/files">Check Equipment</a>
+          <a href="/driver/profile">Payment Methods</a>
+          <a href="/driver/profile">Vehicle Info</a>
+        </div>
+      </section>
+    <section class="driver-welcome">
+      <div class="driver-avatar">{{ me.name|default:'D'|first|upper }}</div>
+      <div>
+        <h2>Welcome back, {{ me.name|default:'Driver' }}</h2>
+        <div class="driver-badges">
+          <span>{{ active_orders|length }} Active</span>
+          <span>{{ available|length }} New Orders</span>
+          <span data-driver-online-label>{% if profile.online %}Online{% else %}Offline{% endif %}</span>
+        </div>
+      </div>
+      <div class="driver-presence-controls" role="group" aria-label="Driver availability">
+        {% csrf_token %}
+        <button type="button" data-driver-presence="ONLINE" aria-pressed="false">Go Online</button>
+        <button type="button" data-driver-presence="BREAK" aria-pressed="false">Take Break</button>
+        <button type="button" data-driver-presence="HOME" aria-pressed="false">Go Home</button>
+        <small data-presence-status role="status"></small>
+      </div>
+      <form method="post" class="driver-location-form" data-driver-location>
+        {% csrf_token %}
+        <input type="hidden" name="dashboard_action" value="location">
+        <input type="hidden" name="latitude">
+        <input type="hidden" name="longitude">
+        <input type="hidden" name="heading">
+      </form>
+    </section>
+
+    <div class="driver-grid">
+
+
+      <section class="driver-jobs-panel">
+        <h2>Active Delivery</h2>
+        {% for order in active_orders %}
+        <article class="driver-job-card active">
+          <strong>Order #{{ order.id }}</strong>
+          <p><b>Pickup</b> {{ order.restaurant_name }}</p>
+          <p><b>Drop-off</b> {{ order.address }}</p>
+          <small>{{ order.status|title }} &middot; ${{ order.delivery_fee }}</small>
+          <div class="driver-actions"><a class="driver-navigate" href="/driver/order/{{ order.id }}">Navigate</a>
+            {% for value,label in order.actions %}
+            <form method="post" action="/driver/order/{{ order.id }}">
+              {% csrf_token %}
+              <button name="status" value="{{ value }}">{{ label }}</button>
+            </form>
+            {% endfor %}
+          </div>
+        </article>
+        {% empty %}
+        <p class="driver-empty">No active delivery right now.</p>
+        {% endfor %}
+
+        <h2>Pending / Upcoming Jobs</h2>
+        {% for order in available %}
+        <article class="driver-job-card">
+          <strong>Pickup #{{ order.id }}</strong>
+          <p>{{ order.restaurant_name }}</p>
+          <p>{{ order.address }}</p>
+          <small>Earn ${{ order.delivery_fee }}</small>
+          <form method="post" action="/driver/order/{{ order.id }}/accept">
+            {% csrf_token %}
+            <button>Accept Job</button>
+          </form>
+        </article>
+        {% empty %}
+        <p class="driver-empty">Go online to see available deliveries.</p>
+        {% endfor %}
+      </section>
+
+      <section class="driver-performance">
+        <h2>Earnings & Performance</h2>
+        <div class="driver-kpis">
+          <article><span>Today's Earnings</span><strong>${{ stats.revenue|floatformat:2 }}</strong></article>
+          <article><span>Orders Completed</span><strong>{{ stats.orders }}</strong></article>
+          <article><span>Rating</span><strong>{{ rating }} / 5</strong></article>
+        </div>
+        <div class="driver-chart">
+          {% for point in weekly %}
+          <span style="height:{{ point }}px"></span>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="driver-announcements">
+        <h2>Announcements & Offers</h2>
+        <article><strong>New Area Incentives</strong><p>Earn extra on evening delivery batches.</p></article>
+        <article><strong>Gear Discounts</strong><p>Save on insulated bags and phone mounts.</p></article>
+        <article><strong>Safety Reminders</strong><p>Keep your route and customer updates current.</p></article>
+      </section>
+
+      <section class="driver-chat">
+        <h2>Chat & Support</h2>
+        <button>Order Issue</button>
+        <button>Location Problem</button>
+        <button>Payment Help</button>
+        <form>
+          <input placeholder="Type a message...">
+          <button type="button">Send</button>
+        </form>
+      </section>
+    </div>
+  </div>
+</section>
+{% endblock %}

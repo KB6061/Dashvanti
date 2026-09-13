@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card report-viewer-card">
+  <div class="report-viewer-header">
+    <h1>{{ title }}</h1>
+    <div><button type="button" id="print-report">Print</button><a id="download-report" class="button" href="{{ download_url }}" download>Download</a></div>
+  </div>
+  <p id="print-help" hidden>Use the Print icon in the PDF toolbar below.</p>
+  <iframe id="report-pdf" title="{{ title }}" data-pdf-url="{{ pdf_url }}"></iframe>
+</section>
+<style>
+.report-viewer-card{width:min(470px,calc(100vw - 48px));margin:0 auto;padding:18px}.report-viewer-header{display:flex;align-items:center;justify-content:space-between;gap:12px}.report-viewer-header h1{font-size:24px;margin:0}.report-viewer-header>div{display:flex;gap:8px}.report-viewer-header button,.report-viewer-header .button{padding:8px 12px}.report-viewer-card iframe{display:block;width:100%;height:min(650px,calc(100dvh - 190px));min-height:360px;margin-top:14px;border:0}
+</style>
+<script>
+const reportZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Chicago';
+const reportFrame = document.getElementById('report-pdf');
+const reportUrl = new URL(reportFrame.dataset.pdfUrl, location.origin); reportUrl.searchParams.set('tz', reportZone); reportFrame.src = reportUrl.href;
+const downloadLink = document.getElementById('download-report'); const downloadUrl = new URL(downloadLink.href); downloadUrl.searchParams.set('tz', reportZone); downloadLink.href = downloadUrl.href;
+document.getElementById('print-report').addEventListener('click', () => { try { reportFrame.contentWindow.focus(); reportFrame.contentWindow.print(); } catch (_) { document.getElementById('print-help').hidden = false; } });
+</script>
+{% endblock %}

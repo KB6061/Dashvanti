@@ -1,0 +1,269 @@
+{% load static %}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Dashvanti · Food, delivered</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"><link rel="stylesheet" href="{% static 'app.css' %}"><link rel="stylesheet" href="{% static 'dashvanti-theme.css' %}?v=account-visible-20260911-19"><style>
+.receipt-popup{width:min(420px,94vw);max-width:94vw;height:min(820px,92dvh);max-height:92dvh;border:0;border-radius:14px;padding:38px 10px 10px;background:#fff;box-shadow:0 18px 70px #0005;box-sizing:border-box}
+.receipt-popup::backdrop{background:#0008}
+.receipt-popup[open]{display:flex;flex-direction:column}
+.receipt-popup .receipt-close{position:absolute;right:8px;top:4px;background:transparent;color:#173f30;font-size:28px;padding:0 9px;border:0;line-height:30px}
+.receipt-popup iframe{width:100%;flex:1;min-height:0;border:0}
+.receipt-popup iframe[hidden]{display:none}
+.receipt-popup footer{display:flex;justify-content:center;gap:12px;padding:10px 0 0}
+.receipt-popup footer .button,.receipt-popup footer button{font-size:13px;padding:7px 16px;border-radius:7px}
+.receipt-popup .receipt-status{font-size:13px;margin:0;text-align:center}
+.receipt-popup .receipt-status:empty{display:none}
+</style><style>
+.site-footer a:hover,.site-footer a:focus,.site-footer a:active,
+.customer-portal-footer a:hover,.customer-portal-footer a:focus,.customer-portal-footer a:active{
+color:#000!important;background:#ffef94!important;border-radius:5px;
+outline:1px solid #e5bf21;outline-offset:3px;box-shadow:0 0 9px 3px #ffdb6580;
+}
+</style><style>
+[data-menu-popup]{cursor:pointer}
+.menu-detail-popup{width:min(560px,94vw);max-height:92dvh;border:0;border-radius:18px;padding:26px;color:#173f30;background:white}
+.menu-detail-popup::backdrop{background:#0008}
+.menu-detail-popup .menu-popup-close{float:right;background:transparent;color:#173f30;border:0;font-size:28px;padding:0 8px}
+.menu-detail-popup [data-menu-photo]{width:100%;max-height:300px;object-fit:contain;border-radius:12px;margin:12px 0}
+.menu-detail-popup [data-menu-photo][hidden]{display:none}
+.menu-detail-popup form>label{display:block;margin:16px 0}
+.menu-detail-popup input,.menu-detail-popup textarea,.menu-detail-popup select{width:100%;margin-top:6px}
+.menu-detail-popup footer{position:sticky;bottom:-26px;background:white;padding:12px 0}
+.menu-detail-popup footer button{width:100%}
+.menu-detail-popup form>p{font-size:13px;color:#52645b}
+</style><link rel="stylesheet" href="{% static 'restaurant-rows.css' %}?v=1"><link rel="stylesheet" href="{% static 'restaurant-detail.css' %}?v=3"><style>
+body.customer-shell-page{margin:0}
+body.customer-shell-page main,
+body.customer-shell-page .customer-topbar,
+body.customer-shell-page .customer-console,
+body.customer-shell-page .restaurant-detail,
+body.customer-shell-page .customer-portal-footer{
+width:100%;max-width:none;margin-left:0;margin-right:0;box-sizing:border-box;
+padding-left:0;padding-right:0;
+}
+body.customer-shell-page .customer-layout,
+body.customer-shell-page #menu-board{min-width:0}
+</style><style>
+body.customer-dashboard-page .customer-layout{grid-template-columns:minmax(0,1fr)}
+body.customer-dashboard-page .customer-right-rail[data-floating-cart]{
+display:flex;flex-direction:column;position:fixed;top:auto;right:18px;bottom:var(--cart-bottom,76px);
+width:320px;max-width:calc(100vw - 28px);max-height:calc(100dvh - var(--cart-bottom,76px) - 18px);
+z-index:99;gap:0;margin:0;filter:drop-shadow(0 8px 18px #0002)
+}
+.floating-cart-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;padding:11px 16px;background:#20583e;color:white;border:0;border-radius:12px 12px 0 0;text-align:left;font-weight:700}
+.floating-cart-toggle span{font-size:22px;line-height:1}
+body.customer-dashboard-page [data-floating-cart] .cart-panel{overflow:auto;min-height:0;border-top-left-radius:0;border-top-right-radius:0}
+body.customer-dashboard-page [data-floating-cart].cart-minimized .cart-panel{display:none}
+[data-floating-cart].cart-minimized .floating-cart-toggle{border-radius:12px}
+</style><style>
+.order-sound-control{display:inline-flex;align-items:center;gap:7px;margin:0;font-size:12px;white-space:nowrap;color:#173f30;cursor:pointer}
+.order-sound-control input[type=checkbox]{width:17px;height:17px;min-height:0;margin:0;accent-color:#20583e;cursor:pointer}
+body.customer-shell-page .customer-topbar nav{flex-wrap:wrap}
+body.customer-shell-page button,body.customer-shell-page a.button,body.customer-shell-page .customer-topbar nav>a{transition:background-color .15s,box-shadow .15s,filter .15s}
+body.customer-shell-page button:not(:disabled):hover,body.customer-shell-page a.button:hover{filter:brightness(.92)}
+body.customer-shell-page button:focus-visible,body.customer-shell-page a:focus-visible{outline:2px solid #d7ac31;outline-offset:3px}
+@media(max-width:1100px){body.customer-shell-page .customer-topbar{height:auto;grid-template-columns:130px minmax(0,1fr);gap:12px;padding:10px}.customer-topbar nav{grid-column:1/-1;justify-content:flex-end}body.customer-shell-page .customer-search{grid-column:2;grid-row:1;min-width:0}}
+@media(max-width:620px){body.customer-shell-page .customer-topbar{grid-template-columns:1fr;gap:10px}body.customer-shell-page .customer-search{grid-column:1;grid-row:auto}.customer-topbar nav{justify-content:flex-start;overflow:visible!important}.customer-topbar nav>a,.customer-topbar nav>button{min-height:44px}.order-sound-control{min-height:44px}.customer-search input{min-width:0}}
+@media(prefers-reduced-motion:reduce){body.customer-shell-page button,body.customer-shell-page a{transition:none}}
+</style><style>
+.customer-address-trigger strong{display:block;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#address-book-popup{width:min(540px,94vw);max-height:90dvh;border:0;border-radius:16px;padding:24px;background:#f7f8f3;color:#173f30}
+#address-book-popup::backdrop{background:#0008}.address-book-close{float:right;background:transparent;color:#173f30;border:0;font-size:28px}
+#address-book-popup form>label{display:block;margin:14px 0}
+#address-book-popup .address-default-label{display:flex;align-items:center;gap:8px}
+#address-book-popup input[type=checkbox]{width:18px;height:18px;margin:0}
+[data-address-book-list]{display:grid;gap:8px;margin:16px 0}
+[data-address-book-list] button{text-align:left;background:white;color:#173f30;border:1px solid #ccd8ca;border-radius:8px;padding:10px}
+#address-book-popup form>button{width:100%}
+</style><link rel="stylesheet" href="{% static 'customer-navigation.css' %}?v=notification-details-1"><link rel="stylesheet" href="{% static 'button-interactions.css' %}?v=1"><link rel="stylesheet" href="{% static 'portal-theme.css' %}?v=20260912-3"><link rel="stylesheet" href="{% static 'customer-orders.css' %}?v=3"><link rel="stylesheet" href="{% static 'topbar-pills.css' %}?v=1"><link rel="stylesheet" href="{% static 'order-tables.css' %}?v=2"><style>.portal-back-dashboard{display:inline-flex;align-items:center;gap:8px;margin:0 0 18px;padding:9px 15px;border:1px solid #d7e1d3;border-radius:24px;background:#edf3e8;color:#173f30;font-size:14px;font-weight:700;text-decoration:none}.portal-back-dashboard:hover{background:#dce9d5;color:#173f30}.portal-back-dashboard:focus-visible{outline:2px solid #205b42;outline-offset:3px}</style>{% if portal == 'driver' %}<link rel="stylesheet" href="{% static 'driver-dashboard.css' %}?v=presence-1">{% endif %}</head><body data-driver-secure-url="{{ driver_secure_url }}" data-google-maps-key="{{ google_maps_api_key }}" class="{{ portal }}-portal{% if signed_in and portal == 'customer' %} customer-shell-page{% endif %}{% if request.path == '/customer/restaurants' %} customer-dashboard-page{% endif %}{% if request.path == '/customer/checkout' %} customer-checkout-page{% endif %}{% if request.path == '/driver/dashboard' %} driver-dashboard-page{% endif %}">
+{% if not signed_in or portal != 'customer' %}
+<header class="site-header"><a class="brand" href="/"><img src="{% static 'logo.jpeg' %}" alt="Dashvanti"></a><nav aria-label="Main navigation">{% if signed_in %}{% if portal != 'customer' %}<a href="/{{ portal }}/dashboard">Dashboard</a>{% endif %}{% if portal == 'restaurant' %}<a href="/restaurant/menu">Menu</a><a href="/restaurant/content">Brand</a><a href="/restaurant/support">Support</a><a href="/restaurant/stats">Analytics</a>{% endif %}{% if portal == 'driver' %}<a href="/driver/earnings">Earnings</a><a href="/driver/support">Support</a><a href="/driver/notifications">Updates</a>{% endif %}{% else %}<div class="public-auth-actions"><a class="auth-action sign-in" href="/{{ portal }}/login">Sign In</a><a class="auth-action sign-up" href="/{{ portal }}/register">Sign Up</a></div>{% endif %}</nav></header>
+{% endif %}
+{% if signed_in and portal == 'customer' %}
+<header class="customer-topbar">
+  <a class="customer-mark" href="/customer/restaurants"><img src="{% static 'logo.jpeg' %}" alt="Dashvanti"></a>
+  <form class="customer-search" method="get" action="/customer/restaurants">
+    <input type="hidden" name="mode" value="{{ order_mode|default:'delivery' }}">
+    <label for="global-customer-search">Search</label>
+    <input id="global-customer-search" name="q" placeholder="Search meals, cuisines, or restaurants" value="{{ request.GET.q }}">
+    <button>Search</button>
+    <div class="customer-search-suggestions" data-search-suggestions role="listbox" hidden></div>
+  </form>
+  <nav>
+    <button class="customer-address-trigger" type="button" data-address-book-open><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg><strong data-customer-header-address>{{ customer_location.address|default:'Set delivery address' }}</strong><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m3 6 5 5 5-5"/></svg></button>
+    <div class="header-order-mode" aria-label="Order type">
+      <button type="button" data-header-mode="delivery" aria-pressed="true">Delivery</button>
+      <button type="button" data-header-mode="pickup" aria-pressed="false">Pickup</button>
+    </div>
+    <button type="button" class="customer-notification-bell" data-notifications-open aria-label="Notifications"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span data-notification-dot hidden></span></button>
+
+    <a class="customer-cart-link" href="/customer/cart">Cart <strong>{{ cart_count|default:0 }}</strong></a>
+
+  </nav>
+</header>
+<aside class="customer-sidebar" aria-label="Customer navigation">
+<a href="/customer/restaurants" class="sidebar-home" title="Home" aria-label="Home">⌂ <span>Home</span></a>
+<nav class="sidebar-categories" aria-label="Browse categories">
+<a href="/customer/restaurants?cuisine=Grocery">♧ <span>Grocery</span></a><a href="/customer/restaurants?cuisine=Retail">▣ <span>Retail</span></a><a href="/customer/restaurants?cuisine=Deals">◇ <span>Deals</span></a><a href="/customer/restaurants?cuisine=Late+Night">☾ <span>Late Night</span></a><a href="/customer/restaurants?cuisine=Alcohol">♕ <span>Alcohol</span></a><a href="/customer/restaurants?cuisine=Apparel">♙ <span>Apparel</span></a><a href="/customer/restaurants?cuisine=Gifts">▢ <span>Gifts</span></a><a href="/customer/restaurants?cuisine=Beauty">♙ <span>Beauty</span></a><a href="/customer/restaurants?cuisine=Electronics">▣ <span>Electronics</span></a><a href="/customer/restaurants?cuisine=DashMart">▤ <span>DashMart</span></a><a href="/customer/restaurants?cuisine=Convenience">♜ <span>Convenience</span></a><a href="/customer/restaurants?cuisine=Flowers">♧ <span>Flowers</span></a><a href="/customer/restaurants?cuisine=Pets">♣ <span>Pets</span></a><a href="/customer/restaurants?cuisine=Gift+Cards">▤ <span>Gift Cards</span></a><a href="/customer/restaurants?cuisine=Health">▤ <span>Health</span></a><a href="/customer/restaurants?cuisine=Party">♧ <span>Party</span></a>
+</nav>
+<div class="sidebar-bottom-actions"><a href="/customer/orders" title="Orders" aria-label="Orders">▤ <span>Orders</span></a><button type="button" data-account-open title="Account" aria-label="Account">◉ <span>Account</span></button></div>
+</aside>
+<dialog class="customer-notification-panel" aria-labelledby="notification-title">
+<button type="button" data-notifications-close aria-label="Close notifications">×</button>
+<h2 id="notification-title">Hello, {{ session_name|default:'there' }}</h2>
+<div data-notification-list></div><p data-notification-status role="status"></p>
+</dialog>
+<form hidden data-header-mode-form action="/customer/order-mode" method="post">{% csrf_token %}<input name="mode" value="{{ request.session.order_mode|default:'delivery' }}"></form>
+
+{% endif %}
+{% if signed_in and portal == 'restaurant' %}
+<section class="restaurant-global-watch" data-auto-refresh>
+  {% if restaurant_notifications %}
+  <div class="restaurant-global-popup">
+    <h2>New customer order</h2>
+    {% for order in restaurant_notifications %}
+    <article>
+      <div>
+        <strong>Order #{{ order.id }}</strong>
+        <span>{{ order.customer_name|default:'Customer' }} · {{ order.customer_phone|default:'no phone' }} · {{ order.customer_email|default:'no email' }}</span>
+        <small>{{ order.mode|title }} · ${{ order.total }} · {{ order.address }}</small>
+      </div>
+      <form method="post" action="/restaurant/order/{{ order.id }}">
+        {% csrf_token %}
+        <button name="status" value="ACCEPTED">Accept</button>
+        <button class="reject" name="status" value="REJECTED">Reject</button>
+      </form>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+{% if signed_in and portal == 'customer' %}
+<div class="account-backdrop" data-account-close></div>
+<aside class="account-drawer" aria-label="Account menu" aria-hidden="true">
+  <div class="account-head"><h2>Account</h2><button type="button" data-account-close aria-label="Close account menu">×</button></div>
+  <a class="pass-banner" href="/customer/profile"><span>*</span><strong>Dashvanti member settings and delivery preferences</strong><span>></span></a>
+  <div class="profile-row">
+    <form class="profile-avatar-form" data-profile-photo-form method="post" action="/customer/photo" enctype="multipart/form-data">{% csrf_token %}
+      <input id="profile-photo-input" type="file" name="photo" accept="image/jpeg,image/png,image/webp" hidden>
+      <button class="avatar profile-avatar-button" type="button" data-profile-photo-open aria-label="Update profile photo">{% if session_profile_photo %}<img src="/customer/files/{{ session_profile_photo }}" alt="Profile photo">{% else %}{{ session_name|default:'K'|first|upper }}{% endif %}</button>
+    </form>
+    <a class="profile-copy" href="/customer/profile"><strong>{{ session_name|default:'Krishna B' }}</strong><small>View profile</small></a>
+  </div>
+  <nav class="account-list" aria-label="Customer account">
+    <a class="active" href="/customer/restaurants"><span>H</span><strong>Home</strong></a>
+    <a href="/customer/restaurants?mode=pickup"><span>P</span><strong>Pickup</strong></a>
+    <a href="/customer/orders"><span>O</span><strong>Orders</strong></a>
+    <a href="/customer/profile"><span>A</span><strong>Account</strong><small>{{ session_name|default:'Krishna Bhandare' }}</small></a>
+    <a href="/customer/restaurants"><span>S</span><strong>Saved stores</strong></a>
+    <a href="/customer/profile"><span>$</span><strong>Payment</strong></a>
+    <a href="/customer/addresses"><span>L</span><strong>Addresses</strong></a>
+    <a href="/customer/support"><span>?</span><strong>Support</strong></a><a href="/customer/notifications"><span>!</span><strong>Updates</strong></a>
+    <button class="account-list-button" type="button" data-logout-open><span>X</span><strong>Log out</strong></button>
+  </nav>
+</aside>
+<div class="logout-modal-backdrop" data-logout-close></div>
+<section class="logout-modal" aria-hidden="true" aria-label="Confirm log out">
+  <button class="logout-close" type="button" data-logout-close aria-label="Cancel log out">×</button>
+  <p class="eyebrow">Leaving Dashvanti</p>
+  <h2>End this session?</h2>
+  <p>Your cart and profile stay saved for next time.</p>
+  <form method="post" action="/customer/logout">
+    {% csrf_token %}
+    <button class="logout-confirm" type="submit">Log out now</button>
+  </form>
+  <button class="logout-cancel" type="button" data-logout-close>Keep browsing</button>
+</section>
+{% endif %}
+{% if signed_in and portal == 'restaurant' or signed_in and portal == 'driver' or signed_in and portal == 'customer' %}<aside data-order-alerts="{{ portal }}">{% csrf_token %}</aside>{% endif %}
+<main>{% if signed_in or request.session.admin_authenticated %}{% if request.path != '/customer/restaurants' and request.path != '/restaurant/dashboard' and request.path != '/driver/dashboard' and request.path != '/admin/dashboard' %}
+<a class="portal-back-dashboard" href="{% if portal == 'customer' %}/customer/restaurants{% else %}/{{ portal }}/dashboard{% endif %}"><span aria-hidden="true">←</span> Back to dashboard</a>
+{% endif %}{% endif %}{% for message in messages %}<div class="alert alert-info" role="status">{{ message }}</div>{% endfor %}{% block content %}{% endblock %}</main>
+{% if signed_in and portal == 'customer' %}
+<footer class="customer-portal-footer">
+  <div class="footer-grid">
+    <section>
+      <h2>For Restaurants</h2>
+      <a href="{{ portal_urls.restaurant }}/restaurant/register">Partner With Us</a>
+      <a href="{{ portal_urls.restaurant }}/restaurant/dashboard">Dashboard For You</a>
+      <a href="{{ portal_urls.restaurant }}/restaurant/profile">Restaurant Consulting</a>
+    </section>
+    <section>
+      <h2>For Delivery Partners</h2>
+      <a href="{{ portal_urls.driver }}/driver/register">Partner With Us</a>
+      <a href="{{ portal_urls.driver }}/driver/dashboard">Dashboard For You</a>
+    </section>
+    <section>
+      <h2>Learn More</h2>
+      <a href="/">Privacy</a>
+      <a href="/">Security</a>
+      <a href="/">Terms of Service</a>
+      <a href="/">Help & Support</a>
+      <a href="/">Report a Fraud</a>
+      <a href="/">Blog</a>
+    </section>
+    <section>
+      <h2>Social Links</h2>
+      <div class="social-links">
+        <a href="/" aria-label="LinkedIn">in</a>
+        <a href="/" aria-label="Instagram">ig</a>
+        <a href="/" aria-label="YouTube">yt</a>
+        <a href="/" aria-label="Facebook">f</a>
+        <a href="/" aria-label="X">x</a>
+      </div>
+    </section>
+  </div>
+</footer>
+{% endif %}
+{% if not signed_in or portal != 'customer' %}
+<footer class="site-footer" id="footer">
+  <div class="footer-grid">
+    <section>
+      <h2>For Restaurants</h2>
+      <a href="{{ portal_urls.restaurant }}/restaurant/register">Partner With Us</a>
+      <a href="{{ portal_urls.restaurant }}/restaurant/dashboard">Dashboard For You</a>
+      <a href="{{ portal_urls.restaurant }}/restaurant/profile">Restaurant Consulting</a>
+    </section>
+    <section>
+      <h2>For Delivery Partners</h2>
+      <a href="{{ portal_urls.driver }}/driver/register">Partner With Us</a>
+      <a href="{{ portal_urls.driver }}/driver/dashboard">Dashboard For You</a>
+    </section>
+    <section>
+      <h2>Learn More</h2>
+      <a href="/">Privacy</a>
+      <a href="/">Security</a>
+      <a href="/">Terms of Service</a>
+      <a href="/">Help & Support</a>
+      <a href="/">Report a Fraud</a>
+      <a href="/">Blog</a>
+    </section>
+    <section>
+      <h2>Social Links</h2>
+      <div class="social-links">
+        <a href="/" aria-label="LinkedIn">in</a>
+        <a href="/" aria-label="Instagram">ig</a>
+        <a href="/" aria-label="YouTube">yt</a>
+        <a href="/" aria-label="Facebook">f</a>
+        <a href="/" aria-label="X">x</a>
+      </div>
+      <p>Dashvanti web dashboards only.</p>
+    </section>
+  </div>
+</footer>
+{% endif %}
+<link rel="stylesheet" href="{% static 'cancellation.css' %}?v=1"><script src="{% static 'cancellation.js' %}?v=1" defer></script><script src="{% static 'distance.js' %}?v=1" defer></script><script src="{% static 'maps.js' %}?v=silver-marker-2" defer></script><link rel="stylesheet" href="{% static 'driver-navigation.css' %}?v=4"><script src="{% static 'driver-navigation.js' %}?v=4" defer></script><script src="{% static 'live-tracking.js' %}?v=stable-tracking-9" defer></script><link rel="stylesheet" href="{% static 'driver-gps.css' %}?v=1"><script src="{% static 'driver-presence.js' %}?v=1" defer></script><script src="{% static 'driver-gps.js' %}?v=movement-gps-3" defer></script><script src="{% static 'app.js' %}?v=driver-gps-popup-1" defer></script><script src="{% static 'order-alerts.js' %}?v=bell-only-5" defer></script><script src="{% static 'receipt-popup.js' %}?v=1" defer></script><link rel="stylesheet" href="{% static 'closed-store.css' %}?v=1"><script src="{% static 'closed-store.js' %}?v=1" defer></script><script src="{% static 'menu-popup.js' %}?v=20260913-1" defer></script><script src="{% static 'restaurant-rows.js' %}?v=3" defer></script><script src="{% static 'restaurant-detail.js' %}?v=3" defer></script><script src="{% static 'floating-cart.js' %}?v=2" defer></script>{% if signed_in and portal == 'customer' %}
+<dialog id="address-book-popup" aria-labelledby="address-book-title">
+<button type="button" data-address-book-close aria-label="Close addresses" class="address-book-close">&times;</button>
+<h2 id="address-book-title">Delivery addresses</h2>
+<label>Search address</label><gmp-place-autocomplete data-address-autocomplete placeholder="Start typing your address"></gmp-place-autocomplete>
+<div data-address-book-list></div>
+<button type="button" data-address-book-new>Add new address</button>
+<form id="address-book-form">
+{% csrf_token %}<input type="hidden" name="id"><input type="hidden" name="latitude"><input type="hidden" name="longitude">
+
+<label>Selected address<input name="address" readonly required></label>
+<label>Label<input name="label" maxlength="80" value="Home" required placeholder="Home, Work…"></label>
+<label class="address-default-label"><input type="checkbox" name="is_default"> Set as default address</label>
+<p role="status" data-address-book-status></p>
+<button type="submit" disabled>Save and use this address</button>
+</form></dialog>
+{% endif %}
+<script src="{% static 'address-book.js' %}?v=saved-address-fallback-1" defer></script><script src="{% static 'customer-navigation.js' %}?v=notification-details-1" defer></script><script src="{% static 'customer-orders.js' %}?v=1" defer></script><script src="{% static 'order-tables.js' %}?v=2" defer></script></body></html>

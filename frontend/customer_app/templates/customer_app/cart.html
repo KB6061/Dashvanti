@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="cart-page">
+  <p class="cart-live-status" data-cart-status role="status" aria-live="polite"></p>
+  <header class="cart-page-head">
+    <div><p class="eyebrow">YOUR ORDER</p><h1>Your cart</h1><p>Review your items before checkout.</p></div>
+    <a href="/customer/restaurants">Continue browsing</a>
+  </header>
+
+  {% if items %}
+  <div class="cart-page-layout" data-cart-layout>
+    <section class="cart-groups">
+      {% for group in groups %}
+      <section class="cart-restaurant-group" data-cart-group="{{ group.restaurant_id }}">
+        <header><div><p class="eyebrow">RESTAURANT</p><h2>{{ group.restaurant_name }}</h2></div><strong data-cart-group-subtotal>${{ group.subtotal }}</strong></header>
+        <div class="cart-item-list">
+          {% for item in group.items %}
+          <article class="cart-item-row" data-cart-line data-price="{{ item.price }}">
+            <div class="cart-item-mark">{{ item.name|first }}</div>
+            <div class="cart-item-copy"><h3>{{ item.name }}{% if item.special_instructions %}<small>{{ item.special_instructions }}</small>{% endif %}</h3><p>${{ item.price }} each</p><strong data-line-total>${{ item.subtotal }}</strong></div>
+            <div class="cart-item-actions">
+              <div class="cart-quantity-control" aria-label="Quantity for {{ item.name }}">
+                <form method="post" data-cart-update>{% csrf_token %}<input type="hidden" name="menu_item_id" value="{{ item.menu_item_id }}"><button data-cart-decrease name="quantity" value="{{ item.quantity|add:'-1' }}" aria-label="Remove one {{ item.name }}">−</button></form>
+                <span data-cart-quantity>{{ item.quantity }}</span>
+                <form method="post" data-cart-update>{% csrf_token %}<input type="hidden" name="menu_item_id" value="{{ item.menu_item_id }}"><button data-cart-increase name="quantity" value="{{ item.quantity|add:'1' }}" aria-label="Add one {{ item.name }}" {% if item.quantity >= 50 %}disabled{% endif %}>+</button></form>
+              </div>
+              <form method="post" class="cart-remove-form" data-cart-update>{% csrf_token %}<input type="hidden" name="menu_item_id" value="{{ item.menu_item_id }}"><button name="quantity" value="0">Remove</button></form>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+      {% endfor %}
+    </section>
+
+    <aside class="cart-summary-card">
+      <p class="eyebrow">ORDER SUMMARY</p><h2>Total</h2>
+      <div><span>Subtotal</span><strong data-cart-subtotal>${{ subtotal }}</strong><span>Tax</span><strong data-cart-tax>${{ tax }}</strong><span>Service fee</span><strong data-cart-service-fee>&#36;{{ service_fee }}</strong><span>Discount</span><strong data-cart-discount>${{ discount }}</strong></div>
+      <hr>
+      <div class="cart-grand-total"><span>Total before delivery</span><strong data-cart-total>${{ total }}</strong></div>
+      <a href="/customer/checkout">Continue to checkout</a>
+    </aside>
+  </div>
+  {% endif %}
+  <section class="cart-empty-state" data-cart-empty {% if items %}hidden{% endif %}><strong>Your cart is empty</strong><p>Add a dish from the menu when you are ready.</p><a href="/customer/restaurants">Explore restaurants</a></section>
+</section>
+{% endblock %}

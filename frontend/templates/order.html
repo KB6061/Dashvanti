@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+{% block content %}
+{% if portal == 'driver' %}{% csrf_token %}{% endif %}
+<h1>Order #{{ order.id }}</h1>
+  {% if portal == 'customer' or portal == 'driver' %}
+  {{ tracking_markers|json_script:"customer-order-map-markers" }}
+  <div class="customer-live-card" data-live-tracking data-order-id="{{ order.id }}" data-tracking-url="/{{ portal }}/order/{{ order.id }}/tracking" data-tracking-role="{{ portal }}">
+    <div>
+      <div id="customer-order-map" class="dashvanti-google-map customer-order-live-map" data-google-map data-map-markers-id="customer-order-map-markers" data-map-current-location="false" aria-label="Live restaurant and driver tracking map"></div>
+      <p class="map-load-status" data-map-status>Loading live Google Map…</p>
+      <div class="customer-map-legend"><span><b>R</b> Restaurant</span><span><b>D</b> Driver</span>{% if order.mode == 'delivery' %}<span><b>H</b> Delivery address</span>{% endif %}</div>
+    </div>
+    <div class="customer-live-copy">
+      <p class="eyebrow">LIVE GPS TRACKING</p>
+      <h2>Restaurant and driver</h2><p data-restaurant-activity aria-live="polite"></p><p data-driver-activity aria-live="polite"></p><p data-tracking-eta aria-live="polite"></p><p data-tracking-distance></p><p data-tracking-health role="status"></p>{% if portal == "driver" %}<details><summary>Turn-by-turn directions</summary><div data-route-directions></div></details>{% endif %}
+      <p><strong>{{ restaurant.name }}</strong><br>{{ restaurant.address }}</p>
+      <p id="driver-assignment-status">{% if driver %}{{ driver.name }} is assigned to your order.{% else %}Waiting for a delivery partner.{% endif %}</p>
+      <p id="driver-vehicle">{% if driver %}{{ driver.vehicle_type|default:'Vehicle' }} {{ driver.vehicle_number }}{% endif %}</p>
+      {% if driver_location %}
+      <p id="driver-location">Live location: {{ driver_location.latitude|floatformat:5 }}, {{ driver_location.longitude|floatformat:5 }}</p>
+      {% else %}
+      <p id="driver-location">Waiting for live GPS signal.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+{% if cancellation %}<section class="card"><h2>Cancellation details</h2><p>{{ cancellation.reason }}</p><p>Cancellation charge: &#36;{{ cancellation.charge }} · New refund request: &#36;{{ cancellation.refund }} · {{ cancellation.refund_status }}</p></section>{% endif %}
+<section class="card" >
+  <p class="eyebrow" id="order-status">{% if order.status == 'ACCEPTED' or order.status == 'CONFIRMED' or order.status == 'PREPARING' %}Preparing Order{% else %}{{ order.status }}{% endif %}</p>
+
+  <div class="order-table-wrap"><table class="order-data-table"><caption>Order summary</caption><tbody>
+  <tr><th>Fulfilment</th><td>{{ order.mode|title }}</td></tr><tr><th>Address</th><td>{{ order.address }}</td></tr>
+  <tr><th>Tax</th><td>&#36;{{ order.tax|default:0|floatformat:2 }}</td></tr>
+  <tr><th>Service fee</th><td>&#36;{{ order.service_fee|default:0|floatformat:2 }}</td></tr>
+  <tr><th>Delivery fee</th><td>&#36;{{ order.delivery_fee|floatformat:2 }}</td></tr>
+  <tr><th>Discount</th><td>&#36;{{ order.discount|default:0|floatformat:2 }}</td></tr>
+  <tr><th>Delivery Partner tip</th><td>&#36;{{ order.tip|default:0|floatformat:2 }}</td></tr>
+  <tr><th>Total</th><td><strong>&#36;{{ order.total|floatformat:2 }}</strong></td></tr>
+  </tbody></table></div>
+  <div class="order-table-wrap"><table class="order-data-table" data-order-table><caption>Menu items</caption><thead><tr><th>Item</th><th>Quantity</th><th>Unit price</th><th>Special instructions</th></tr></thead><tbody>
+  {% for item in items %}<tr><td>{{ item.name }}</td><td>{{ item.quantity }}</td><td>&#36;{{ item.price|floatformat:2 }}</td><td>{{ item.special_instructions|default:'—' }}</td></tr>{% empty %}<tr><td colspan="4">No items.</td></tr>{% endfor %}
+  </tbody></table></div>
+  <p id="driver-info">
+    {% if driver %}Driver: {{ driver.name }} &middot; {{ driver.phone }}{% if driver.vehicle_type %} &middot; {{ driver.vehicle_type }} {{ driver.vehicle_number }}{% endif %}{% else %}Driver not assigned{% endif %}
+  </p>
+  {% if customer and portal == 'restaurant' %}
+  <p>Customer: {{ customer.name }} &middot; {{ customer.phone|default:'phone not added' }}</p>
+  {% endif %}
+  <a class="order-chat-link" href="/{{ portal }}/order/{{ order.id }}/chat">Order chat</a>
+  {% if order.status != "DELIVERED" and order.status != "CANCELLED" and order.status != "REJECTED" %}<button type="button" data-cancel-order="/{{ portal }}/order/{{ order.id }}/cancellation">{% if portal == "driver" %}Release delivery{% else %}Cancel order{% endif %}</button>{% endif %}
+  <div data-order-actions>
+  {% for action in actions %}
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="status" value="{{ action }}">
+    <button class="btn btn-primary">{{ action }}</button>
+  </form>
+  {% endfor %}
+  </div>
+</section>
+
+<h2 class="mt-4">Order timeline</h2>
+{% if portal == 'restaurant' %}
+<div class="order-table-wrap"><table class="order-data-table"><caption>Order status history and assigned delivery partner contact</caption>
+<thead><tr><th>Date and time</th><th>Status</th><th>Assigned driver</th><th>Driver phone</th></tr></thead><tbody>
+{% for event in history %}<tr>
+<td><time data-order-date datetime="{{ event.created_at }}">{{ event.created_at }}</time></td>
+<td>{{ event.status|title }}</td><td>{{ driver.name|default:'Not assigned' }}</td>
+<td>{% if driver.phone %}<a href="tel:{{ driver.phone }}">{{ driver.phone }}</a>{% else %}Not available{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="4">No status updates recorded.</td></tr>{% endfor %}
+</tbody></table></div>
+{% else %}
+<ol id="timeline">
+  {% for event in history %}
+  <li>{{ event.status }} &middot; {{ event.created_at }}</li>
+  {% endfor %}
+  </div>
+</ol>
+{% endif %}
+
+{% if portal == 'customer' %}
+{% if restaurant.name == 'Taj Indian Restaurant' %}
+<form method="post" action="/customer/order/{{ order.id }}/reorder">
+  {% csrf_token %}
+  <button class="btn btn-outline-dark">Reorder (replace cart)</button>
+</form>
+{% endif %}
+<a data-delivery-rating href="/customer/order/{{ order.id }}/review" {% if order.status != "DELIVERED" %}hidden{% endif %}>Rate and review</a>
+{% endif %}
+{% endblock %}

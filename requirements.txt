@@ -1,0 +1,16 @@
+fastapi>=0.121,<1
+uvicorn[standard]>=0.34,<1
+SQLAlchemy>=2.0,<3
+oracledb>=2.5,<4
+pydantic-settings>=2.7,<3
+PyJWT>=2.10,<3
+pwdlib[argon2]>=0.2,<1
+python-multipart>=0.0.20,<1
+email-validator>=2.2,<3
+confluent-kafka>=2.8,<3
+Django>=5.2,<5.3
+httpx>=0.28,<1
+Pillow>=11,<13
+pytest>=8,<10
+
+reportlab>=5.0,<6

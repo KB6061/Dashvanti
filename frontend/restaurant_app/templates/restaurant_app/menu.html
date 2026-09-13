@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="menu-manager-shell">
+  <header class="menu-manager-head">
+    <div>
+      <p class="eyebrow">RESTAURANT MENU</p>
+      <h1>{% if editing %}Edit menu item{% else %}Menu manager{% endif %}</h1>
+      <p>Keep every dish organized, visible, and ready to order.</p>
+    </div>
+    <a class="menu-manager-back" href="/restaurant/dashboard">Back to dashboard</a>
+  </header>
+
+  <div class="menu-manager-layout">
+    <section class="menu-editor-card">
+      <div class="menu-editor-head">
+        <div><p class="eyebrow">{% if editing %}UPDATE ITEM{% else %}NEW ITEM{% endif %}</p><h2>{% if editing %}Item details{% else %}Add a menu item{% endif %}</h2></div>
+        {% if editing %}<a href="/restaurant/menu">Cancel edit</a>{% endif %}
+      </div>
+      <form method="post" enctype="multipart/form-data" class="menu-editor-form">
+        {% csrf_token %}
+        <div class="menu-form-grid">
+          <label class="menu-field-wide">Item name{{ form.name }}{{ form.name.errors }}</label>
+          <label>Category{{ form.category }}{{ form.category.errors }}</label>
+          <label>Price{{ form.price }}{{ form.price.errors }}</label>
+          <label class="menu-field-wide">Description{{ form.description }}{{ form.description.errors }}<small>Keep it brief so customers can scan the menu.</small></label>
+          <label class="menu-field-wide menu-photo-field">Item photo{{ form.photo }}{{ form.photo.errors }}</label>
+        </div>
+        <div class="menu-option-row"><label>{{ form.veg }} Vegetarian</label><label>{{ form.available }} Visible to customers</label></div>
+        <button class="menu-save-button">{% if editing %}Save changes{% else %}Add to menu{% endif %}</button>
+      </form>
+    </section>
+
+    <section class="menu-catalog-card">
+      <div class="menu-catalog-head">
+        <div><p class="eyebrow">MENU CATALOG</p><h2>Your dishes <span>{{ items|length }}</span></h2></div>
+        <form class="menu-search-form" method="get"><label for="menu-search">Search menu</label><input id="menu-search" name="q" value="{{ request.GET.q }}" placeholder="Search menu items"><button>Search</button></form>
+      </div>
+      <div class="menu-catalog-grid">
+        {% for item in items %}
+        <article class="menu-catalog-item">
+          {% if item.photos %}<img src="/restaurant/files/{{ item.photos.0 }}?size=menu" alt="{{ item.name }}" loading="eager" decoding="async" fetchpriority="{% if forloop.counter <= 4 %}high{% else %}auto{% endif %}">{% else %}<div class="menu-catalog-placeholder">{{ item.name|first }}</div>{% endif %}
+          <div class="menu-catalog-copy">
+            <div class="menu-catalog-meta"><span>{{ item.category|default:'General' }}</span><em class="{% if item.available %}is-visible{% else %}is-hidden{% endif %}">{% if item.available %}Visible{% else %}Hidden{% endif %}</em></div>
+            <h3>{{ item.name }}</h3>
+            <p>{{ item.description|default:'No description added.' }}</p>
+            <div class="menu-catalog-price"><strong>${{ item.price }}</strong><span>{% if item.veg %}Vegetarian{% else %}Non vegetarian{% endif %}</span></div>
+            <div class="menu-catalog-actions"><a href="/restaurant/menu/{{ item.id }}">Edit</a><form method="post" action="/restaurant/menu/{{ item.id }}">{% csrf_token %}<button name="delete" value="1">Delete</button></form></div>
+          </div>
+        </article>
+        {% empty %}
+        <div class="menu-catalog-empty"><strong>No menu items yet</strong><p>Add your first dish using the form.</p></div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+</section>
+{% endblock %}

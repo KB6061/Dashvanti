@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="admin-console">
+  <div class="admin-head"><div><p class="eyebrow">Admin</p><h1>Drivers</h1></div><a href="/admin/dashboard">Dashboard</a></div>
+  <div class="admin-table">
+    {% for user, driver in rows %}
+    <article><strong>#{{ user.id }} {{ user.name }}</strong><span>{% if driver.online %}Online{% else %}Offline{% endif %} · {{ driver.vehicle_type|default:'Vehicle' }} {{ driver.vehicle_number }} · {{ user.phone|default:'no phone' }}</span></article>
+    {% empty %}<p>No drivers found.</p>{% endfor %}
+  </div>
+</section>
+{% endblock %}

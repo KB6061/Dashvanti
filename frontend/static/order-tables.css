@@ -1,0 +1,14 @@
+
+.order-table-wrap{width:100%;overflow-x:auto;margin:12px 0;border:1px solid #dce4db;border-radius:10px;background:#fff}
+.order-data-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.45}
+.order-data-table caption{caption-side:top;padding:12px 14px;font-size:16px;font-weight:700;color:#173f30;text-align:left}
+.order-data-table th,.order-data-table td{padding:10px 14px;text-align:left;vertical-align:top;border-bottom:1px solid #e4e9e1;overflow-wrap:anywhere;max-width:360px}
+.order-data-table thead th{background:#edf3e9;font-size:13px;font-weight:700;white-space:nowrap}
+.order-data-table tbody tr:nth-child(even){background:#f8faf6}.order-data-table tbody tr:hover{background:#eef4e8}
+.order-data-table button,.order-data-table a{font-size:13px}.order-data-table form{margin:0}.order-data-table .ticket-actions{display:flex;flex-wrap:wrap;gap:6px}
+.order-data-table tr[hidden]{display:none}.order-table-pages{display:flex;gap:12px;align-items:center;justify-content:flex-end;font-size:13px;margin:10px 0;flex-wrap:wrap}
+body.restaurant-portal .order-board{display:block}.order-board .order-lane{margin-bottom:18px}
+.restaurant-history th,.restaurant-history td{font-size:14px;line-height:1.45;padding:10px 12px}.restaurant-history th{font-size:13px}
+@media(max-width:650px){.order-data-table{min-width:600px}.order-data-table th,.order-data-table td{padding:9px 10px;font-size:13px}}
+
+[data-order-url]{cursor:pointer}[data-order-url]:focus-visible{outline:2px solid #205b42;outline-offset:-2px}

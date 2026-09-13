@@ -1,0 +1,7 @@
+
+body .site-header nav>a,body .site-header nav>button,body .site-header .public-auth-actions a,body .customer-topbar nav>a,body .customer-topbar nav>button{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:999px;background:#eeeeee;color:#171717;min-height:34px;padding:7px 13px;font-size:13px;font-weight:700;line-height:1.25;text-decoration:none;white-space:nowrap}
+body.customer-shell-page .customer-topbar .customer-address-trigger{background:#e3e3e3;color:#171717;border:0;border-radius:999px;padding:7px 12px;min-height:34px;max-width:240px;gap:5px}
+.customer-address-trigger svg{flex-shrink:0}.customer-address-trigger strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+body .site-header nav>a:hover,body .customer-topbar nav>a:hover,body .customer-topbar nav>button:hover{background:#dedede;color:#111}
+body .site-header nav{flex-wrap:wrap;gap:8px}
+@media(max-width:650px){body.customer-shell-page .customer-topbar .customer-address-trigger{max-width:205px}body .site-header nav>a,body .customer-topbar nav>a{padding:7px 10px}}

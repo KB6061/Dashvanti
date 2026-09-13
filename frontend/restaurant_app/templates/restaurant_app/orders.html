@@ -1,0 +1,50 @@
+{% extends "orders.html" %}
+
+{% block content %}
+<section class="restaurant-history">
+<header class="history-title"><h1>Orders</h1><span data-history-results></span></header><div class="history-filters"><div>
+<label for="history-search">Search all orders</label>
+<input id="history-search" type="search" placeholder="Customer name, phone, order number or menu item" autocomplete="off"></div><label>Status<select data-history-status-filter><option value="">All statuses</option></select></label></div>
+<div class="history-table-wrap"><table>
+<thead><tr><th>Order ID</th><th>Date</th><th>Customer</th><th>Driver</th><th>Mode</th><th>Total</th><th>Status</th></tr></thead>
+<tbody>{% for order in orders %}<tr data-order-row data-order-url="/restaurant/order/{{ order.id }}" tabindex="0" data-status="{{ order.status }}" data-phone="{{ order.customer_phone }}" data-menu-search="{% for item in order.items %}{{ item.name }} {% endfor %}">
+<td><a href="/restaurant/order/{{ order.id }}" aria-label="View order {{ order.id }}">#{{ order.id }}</a></td>
+<td><time datetime="{{ order.created_at }}">{{ order.created_at }}</time></td>
+<td>{{ order.customer_name }}</td><td>{{ order.driver_name|default:'Unassigned' }}</td>
+<td>{{ order.mode|title }}</td><td>&#36;{{ order.total|floatformat:2 }}</td>
+<td><span class="history-status">{{ order.status|title }}</span></td>
+</tr>{% endfor %}</tbody></table></div>
+<p data-history-empty hidden>No matching orders.</p>
+<div class="history-pagination"><button type="button" data-history-prev>Previous</button><span data-history-count aria-live="polite"></span><button type="button" data-history-next>Next</button></div>
+</section>
+<style>
+.restaurant-history{max-width:1400px;margin:auto}.restaurant-history>input{max-width:600px;margin:8px 0 20px}.history-table-wrap{overflow:auto;border:1px solid #dce4db;border-radius:12px;background:white}.restaurant-history table{width:100%;border-collapse:collapse;min-width:740px}.restaurant-history th,.restaurant-history td{padding:14px;text-align:left;border-bottom:1px solid #e4e9e1;vertical-align:top}.restaurant-history th{background:#eef3ea}.restaurant-history time,.restaurant-history small,.restaurant-history td a{display:block;font-size:13px;margin-top:5px}.restaurant-history tr[hidden]{display:none}.history-pagination{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:20px}.restaurant-history tbody tr:hover{background:#f6f8f3}
+
+.history-title{display:flex;align-items:center;gap:12px;margin-bottom:18px}.history-title h1{font-size:26px;margin:0}.history-title>span{font-size:12px;background:#edf3e7;border:1px solid #dce5d7;padding:5px 9px;border-radius:5px}
+.history-filters{display:flex;align-items:end;gap:18px;padding:16px;border:1px solid #dce4db;border-radius:14px;margin-bottom:20px;background:#fff}.history-filters>div{flex:1}.history-filters label{font-size:13px}.history-filters input,.history-filters select{margin:6px 0 0;width:100%;min-height:42px}.history-filters>label{min-width:180px}
+.restaurant-history th,.restaurant-history td{font-size:13px;padding:12px 14px;vertical-align:middle}.restaurant-history time,.restaurant-history td a{margin:0;white-space:nowrap}.history-status{display:inline-block;padding:3px 9px;border-radius:16px;background:#e4efe2;color:#245a39;font-size:12px;font-weight:700}
+@media(max-width:650px){.history-filters{flex-direction:column;align-items:stretch}.history-title h1{font-size:23px}}
+</style>
+<script>
+(()=>{
+ const root=document.querySelector('.restaurant-history'),input=root.querySelector('#history-search'),rows=[...root.querySelectorAll('[data-order-row]')];let page=0;
+ rows.forEach(row=>{const time=row.querySelector('time');let raw=time.dateTime;if(!/Z$|[+-]\d\d:\d\d$/.test(raw))raw+='Z';const date=new Date(raw);if(!Number.isNaN(date.valueOf()))time.textContent=date.toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short',hour12:true});row.dataset.search=(row.textContent+" "+row.dataset.menuSearch+" "+row.dataset.phone).toLocaleLowerCase();});
+ const statusFilter=root.querySelector('[data-history-status-filter]');
+ [...new Set(rows.map(row=>row.dataset.status))].sort().forEach(value=>{const option=document.createElement('option');option.value=value;option.textContent=value.replaceAll('_',' ');statusFilter.append(option);});
+ statusFilter.addEventListener('change',()=>{page=0;render();});
+ function render(){
+  const query=input.value.trim().toLocaleLowerCase(),digits=query.replace(/\D/g,'');
+  const matches=rows.filter(row=>!statusFilter.value||row.dataset.status===statusFilter.value).filter(row=>row.dataset.search.includes(query)||(digits.length>=3&&/^[+\d\s().-]+$/.test(query)&&row.dataset.phone.replace(/\D/g,'').includes(digits)));
+  const pages=Math.max(1,Math.ceil(matches.length/25));page=Math.min(page,pages-1);
+  rows.forEach(row=>row.hidden=true);matches.slice(page*25,(page+1)*25).forEach(row=>row.hidden=false);
+  root.querySelector('[data-history-results]').textContent=matches.length+' results';
+  root.querySelector('[data-history-empty]').hidden=matches.length>0;
+  root.querySelector('[data-history-count]').textContent=matches.length+' orders · Page '+(page+1)+' of '+pages;
+  root.querySelector('[data-history-prev]').disabled=page===0;root.querySelector('[data-history-next]').disabled=page===pages-1;
+ }
+ input.addEventListener('input',()=>{page=0;render();});
+ root.querySelector('[data-history-prev]').onclick=()=>{page--;render();};
+ root.querySelector('[data-history-next]').onclick=()=>{page++;render();};render();
+})();
+</script>
+{% endblock %}

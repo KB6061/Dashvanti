@@ -1,0 +1,68 @@
+/* Shared customer-theme surfaces; each portal keeps its own workflow layout. */
+body:is(.restaurant-portal,.driver-portal,.admin-portal){
+  background:var(--dash-bg);
+  color:var(--dash-ink);
+  font-family:Arial,Helvetica,sans-serif;
+  --bs-primary:#20583e;
+  --bs-primary-rgb:32,88,62;
+  --bs-body-color:var(--dash-ink);
+  --bs-border-color:var(--dash-border);
+}
+body.admin-portal:has(.admin-workspace){background:var(--dash-bg);color:var(--dash-ink)}
+body:is(.restaurant-portal,.driver-portal,.admin-portal) :is(.site-header,.restaurant-topbar,.driver-topbar,.admin-topbar){background:#fff;border-bottom:1px solid var(--dash-border)}
+body:is(.restaurant-portal,.driver-portal,.admin-portal) :is(.restaurant-sidebar,.driver-sidebar,.admin-sidebar){background:#fff;color:var(--dash-ink);border-color:var(--dash-border)}
+body:is(.restaurant-portal,.driver-portal,.admin-portal) :is(.restaurant-mini-brand,.admin-brand){color:var(--dash-ink);border-color:var(--dash-border)}
+body:is(.restaurant-portal,.driver-portal,.admin-portal) :is(.restaurant-sidebar,.driver-sidebar,.admin-sidebar) nav a{
+  color:var(--dash-ink);
+  border-radius:9px;
+  min-height:44px;
+  font-weight:650;
+}
+body:is(.restaurant-portal,.driver-portal,.admin-portal) :is(.restaurant-sidebar,.driver-sidebar,.admin-sidebar) nav a:is(:hover,.active){background:var(--dash-sage);color:var(--dash-primary);text-decoration:none}
+body.admin-portal .admin-sidebar nav a span{color:inherit}
+body:is(.restaurant-portal,.driver-portal,.admin-portal) :is(.form-card,.card,.filters,.restaurant-kpis article,.order-lane,.menu-hub,.analytics-panel,.driver-map-panel,.driver-jobs-panel,.driver-performance,.driver-announcements,.driver-chat,.admin-kpis a,.admin-panel,.admin-data-card,.admin-create,.admin-filters){
+  background:#fff;
+  color:var(--dash-ink);
+  border:1px solid var(--dash-border);
+  border-radius:var(--dash-radius);
+  box-shadow:none;
+}
+body:is(.restaurant-portal,.driver-portal,.admin-portal) :is(.order-ticket,.driver-job-card){background:#fff;border-color:var(--dash-border);border-left-color:var(--dash-primary);border-radius:12px;box-shadow:none}
+body:is(.restaurant-portal,.driver-portal,.admin-portal) :is(h1,h2,h3,.admin-kpis strong,.driver-kpis strong){color:var(--dash-ink)}
+body.admin-portal :is(.admin-title p,.admin-kpis span,.admin-kpis small,.admin-kpis strong em,.admin-panel-head small,.admin-identity small,.admin-data-card td small,.admin-rank-list em,.admin-ticket p,.admin-audit span,.admin-audit small,.admin-filters label,.admin-edit-grid label){color:var(--dash-muted)}
+body.admin-portal :is(.admin-topbar>form:first-child,.admin-identity,.admin-data-card td,.admin-panel td,.admin-rank-list a,.admin-ticket,.admin-audit article){border-color:var(--dash-border)}
+body.admin-portal :is(.admin-data-card th,.admin-panel th){background:var(--dash-sage);color:var(--dash-muted);border-color:var(--dash-border)}
+body.admin-portal .admin-rank-list a{color:var(--dash-ink)}
+body.admin-portal .admin-rank-list span{background:var(--dash-sage);color:var(--dash-primary)}
+body.admin-portal .admin-create>summary{color:var(--dash-primary)}
+body.admin-portal .admin-topbar>form:first-child{border-radius:12px}
+body:is(.restaurant-portal,.driver-portal,.admin-portal) :is(input,select,textarea){accent-color:var(--dash-primary)}
+body:is(.restaurant-portal,.driver-portal,.admin-portal) :is(input,select,textarea):focus-visible{outline:2px solid var(--dash-primary);outline-offset:2px}
+body:is(.restaurant-portal,.driver-portal,.admin-portal) :is(.btn-primary,.admin-filters button,.admin-edit-grid button,.ticket-actions button,.driver-status-form button,.driver-location-form button,.driver-job-card button,.driver-actions button,.driver-chat form button){
+  background:var(--dash-primary);
+  color:#fff;
+  border-radius:12px;
+}
+body:is(.restaurant-portal,.driver-portal,.admin-portal) :is(.btn-primary,.admin-filters button,.admin-edit-grid button,.ticket-actions button,.driver-status-form button,.driver-location-form button,.driver-job-card button,.driver-actions button,.driver-chat form button):not(:disabled):hover{background:var(--dash-hover);color:#fff}
+body.admin-portal :is(.admin-topbar>form:nth-of-type(2) button,.admin-actions summary){background:#fff;color:var(--dash-primary);border:1px solid var(--dash-border);border-radius:12px}
+body.admin-portal .admin-actions .admin-delete{color:var(--dash-danger)}
+body.admin-portal .admin-actions details[open]>.admin-edit-grid{border-color:var(--dash-border);border-radius:var(--dash-radius)}
+body.admin-portal :is(.admin-system,.admin-live){background:var(--dash-sage);color:var(--dash-primary);border-color:var(--dash-border)}
+body.admin-portal :is(.admin-system i,.admin-live i){background:var(--dash-primary)}
+body.admin-portal .admin-volume-chart{border-color:var(--dash-border);background:linear-gradient(to top,var(--dash-sage) 1px,transparent 1px) 0 0/100% 25%}
+body.admin-portal .admin-volume-chart span{background:linear-gradient(var(--dash-primary),#b7d3ae)}
+body.admin-portal .admin-volume-chart small{color:var(--dash-muted)}
+body.driver-portal :is(.driver-welcome,.driver-kpis article){background:var(--dash-sage)}
+body.driver-portal .driver-topbar nav{flex-wrap:wrap;gap:16px}
+body.admin-portal :is(.admin-main,.admin-panel,.admin-data-card){min-width:0}
+@media(max-width:720px){
+  body.admin-portal :is(.admin-overview-grid,.admin-bottom-grid){grid-template-columns:minmax(0,1fr)}
+}
+
+body.restaurant-portal .site-header{background:#f7f8f2;min-height:116px}
+body.restaurant-portal .site-header .brand{display:flex;align-items:center;width:210px;height:104px;flex-shrink:0}
+body.restaurant-portal .site-header .brand img{width:200px;height:100px;max-width:none;object-fit:contain;mix-blend-mode:multiply}
+body.restaurant-portal .restaurant-mini-brand{display:block}
+@media(max-width:650px){body.restaurant-portal .site-header .brand{width:120px;height:80px}body.restaurant-portal .site-header .brand img{width:120px;height:80px}}
+
+.restaurant-map-name{text-shadow:0 1px 2px white,1px 0 2px white,-1px 0 2px white,0 -1px 2px white}

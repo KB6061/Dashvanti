@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="admin-console">
+  <div class="admin-head"><div><p class="eyebrow">Admin</p><h1>Restaurants</h1></div><a href="/admin/dashboard">Dashboard</a></div>
+  <div class="admin-table">
+    {% for row in rows %}
+    <article><strong>#{{ row.id }} {{ row.name }}</strong><span>{{ row.cuisine }} · {% if row.is_open %}Open{% else %}Closed{% endif %} · {{ row.opening }}-{{ row.closing }} · {{ row.delivery_minutes }} min</span></article>
+    {% empty %}<p>No restaurants found.</p>{% endfor %}
+  </div>
+</section>
+{% endblock %}

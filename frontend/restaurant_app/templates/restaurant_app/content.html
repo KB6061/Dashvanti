@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="operations-shell">
+  <div class="intro"><div><p class="eyebrow">RESTAURANT CONTENT</p><h1>Brand & kitchen controls</h1><p>Update customer-facing photography and capacity from one saved workspace.</p></div></div>
+  <form method="post" enctype="multipart/form-data" class="form-card operations-form">{% csrf_token %}
+    <div class="form-columns"><label>Cover photo <input type="file" name="cover" accept="image/jpeg,image/png,image/webp"></label><label>Logo <input type="file" name="logo" accept="image/jpeg,image/png,image/webp"></label></div>
+    <label>Gallery photos <input type="file" name="gallery" multiple accept="image/jpeg,image/png,image/webp"></label>
+    {% if content.gallery_file_ids %}<div class="gallery-picker">{% for file_id in content.gallery_file_ids %}<label><img src="/restaurant/files/{{ file_id }}" alt="Gallery photo"><span><input type="checkbox" name="remove_gallery" value="{{ file_id }}"> Remove</span></label>{% endfor %}</div>{% endif %}
+    <label>Kitchen mode <select name="busy_mode"><option value="open" {% if content.busy_mode == 'open' %}selected{% endif %}>Open</option><option value="busy" {% if content.busy_mode == 'busy' %}selected{% endif %}>Busy — longer preparation</option><option value="paused" {% if content.busy_mode == 'paused' %}selected{% endif %}>Paused — no new orders</option></select></label>
+    <div class="form-columns"><label>Extra preparation minutes <input type="number" min="0" max="120" name="prep_extra_minutes" value="{{ content.prep_extra_minutes }}"></label><label>Unprepared order capacity <input type="number" min="1" max="100" name="capacity" value="{{ content.capacity }}"></label></div>
+    <label>Busy until <input type="datetime-local" name="busy_until" value="{{ content.busy_until|date:'Y-m-d\TH:i' }}"></label>
+    <button>Save restaurant content</button>
+  </form>
+</section>
+{% endblock %}

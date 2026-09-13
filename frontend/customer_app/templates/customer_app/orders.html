@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+
+{% block content %}
+<section id="customer-order-history" tabindex="-1">
+<header><h1>Orders</h1><button type="button" data-orders-back hidden>Back to dashboard</button></header>
+<nav aria-label="Filter orders"><button type="button" data-order-filter="all" aria-pressed="true">All orders</button><button type="button" data-order-filter="active">Active</button><button type="button" data-order-filter="completed">Completed</button><button type="button" data-order-filter="cancelled">Cancelled</button></nav>
+<div class="history-orders">
+{% for order in orders %}
+<article data-order-url="/customer/order/{{ order.id }}" tabindex="0" class="history-order" data-history-status="{{ order.status }}">
+<time data-local-order-date datetime="{{ order.created_at }}">{{ order.created_at }}</time>
+<details><summary><strong>{{ order.restaurant_name }}</strong><span>Order #{{ order.id }} · {{ order.status|title }}</span></summary>
+<p>{{ order.mode|title }} · {{ order.address }}</p>
+<ul>{% for item in order.items %}<li>{{ item.quantity }} × {{ item.name }} · &#36;{{ item.price|floatformat:2 }} each</li>{% endfor %}</ul>
+</details>
+<div class="history-order-bottom"><div><p>&#36;{{ order.total|floatformat:2 }} · {{ order.item_count }} items · {{ order.mode|title }}</p>
+<strong>{% for item in order.items %}{{ item.name }}{% if not forloop.last %} · {% endif %}{% endfor %}</strong></div>
+<div class="history-order-actions">{% if order.status != "DELIVERED" and order.status != "REJECTED" and order.status != "CANCELLED" and order.status != "CANCELED" %}<a href="/customer/order/{{ order.id }}/track">Track order</a>{% endif %}<form method="post" action="/customer/order/{{ order.id }}/reorder">{% csrf_token %}<button type="submit">Reorder</button></form>
+<a class="button" data-report-popup href="/customer/order/{{ order.id }}/bill">View order bill</a></div></div>
+</article>
+{% empty %}<p>Your orders will appear here.</p>{% endfor %}
+</div><p data-orders-filter-empty hidden>No orders in this section.</p>
+</section>
+{% endblock %}

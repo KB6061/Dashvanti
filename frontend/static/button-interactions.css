@@ -1,0 +1,20 @@
+
+:is(button,input[type=button],input[type=submit],input[type=reset],a.button,a.btn,a[role=button]){
+cursor:pointer;transition:filter .16s ease,box-shadow .16s ease,background-color .16s ease;
+}
+@media(hover:hover){
+:is(button,input[type=button],input[type=submit],input[type=reset],a.button,a.btn,a[role=button]):not(:disabled):not([aria-disabled=true]):hover{
+filter:brightness(.9)!important;box-shadow:0 3px 10px #0002;
+}
+nav a:not([aria-disabled=true]):hover{filter:brightness(.9)}
+}
+:is(button,input[type=button],input[type=submit],input[type=reset],a.button,a.btn,a[role=button]):not(:disabled):not([aria-disabled=true]):active{
+filter:brightness(.82)!important;
+}
+:is(button,input[type=button],input[type=submit],input[type=reset],a.button,a.btn,a[role=button]):focus-visible{
+outline:2px solid #d7ac31;outline-offset:3px;
+}
+:is(button,input[type=button],input[type=submit],input[type=reset]):disabled,[aria-disabled=true]{cursor:not-allowed}
+@media(prefers-reduced-motion:reduce){
+:is(button,input[type=button],input[type=submit],input[type=reset],a.button,a.btn,a[role=button]){transition:none!important}
+}

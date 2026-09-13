@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="auth-page">
+  <div class="auth-story">
+    <p class="eyebrow">{{ portal }} access</p>
+    <h1>{{ title }}</h1>
+    {% if auth_action == 'login' %}
+    <p>Jump back into Dashvanti with your saved account, orders, and kitchen activity.</p>
+    {% elif auth_action == 'register' %}
+    <p>Join Dashvanti and choose the account type that matches how you use the platform.</p>
+    {% elif auth_action == 'forgot' %}
+    <p>Enter your account email and we will send a reset link.</p>
+    {% else %}
+    <p>Set a secure new password and continue from where you left off.</p>
+    {% endif %}
+  </div>
+
+  <section class="auth-card">
+    <div class="auth-card-tabs">
+      <a class="{% if auth_action == 'login' %}active{% endif %}" href="/{{ portal }}/login">Sign in</a>
+      <a class="{% if auth_action == 'register' %}active{% endif %}" href="/{{ portal }}/register">Sign up</a>
+    </div>
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button class="btn btn-primary">{{ submit_label }}</button>
+    </form>
+    <div class="auth-links">
+      <a href="/{{ portal }}/forgot">Forgot password?</a>
+      <a href="/">Back home</a>
+    </div>
+  </section>
+</section>
+{% endblock %}
