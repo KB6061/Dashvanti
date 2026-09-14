@@ -20,12 +20,15 @@ class RequestLoggingTests(unittest.TestCase):
         log_request(self.logger, '/customer/orders?token=secret', 200,
                     time.perf_counter(), '102', '192.168.56.1')
         text = self.output.getvalue()
-        self.assertRegex(text, r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[INFO\]')
-        self.assertIn('CUSTOMER REQUEST /customer/orders RESPONSE 200 Duration=', text)
-        self.assertIn('UserID: 102\nIP: 192.168.56.1', text)
-        self.assertIn('Activity: Customer viewing orders', text)
+        self.assertRegex(text, r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[INFO\]')
+        self.assertIn('EVENT=CustomerOrdersViewed', text)
+        self.assertIn('CustomerID=102', text)
+        self.assertIn('API=REQUEST /customer/orders', text)
+        self.assertIn('HTTPStatus=200', text)
+        self.assertIn('IP=192.168.56.1', text)
+        self.assertIn('Outcome="Customer orders returned"', text)
         self.assertNotIn('secret', text)
-        self.assertEqual(len(text.splitlines()), 4)
+        self.assertEqual(len(text.splitlines()), 1)
 
     def test_levels(self):
         log_request(self.logger, '/driver/status/update', 200, time.perf_counter() - 2)
@@ -36,9 +39,9 @@ class RequestLoggingTests(unittest.TestCase):
     def test_roles_and_activity(self):
         for role in ('customer', 'restaurant', 'driver', 'admin'):
             self.assertEqual(request_role('/' + role + '/orders'), role.upper())
-        self.assertEqual(request_role('/api/customer/orders'), 'SYSTEM')
+        self.assertEqual(request_role('/api/customer/orders'), 'CUSTOMER')
         self.assertEqual(request_role('/administrator/orders'), 'SYSTEM')
-        self.assertEqual(activity('/driver/location/update/'), 'Driver sending GPS update')
+        self.assertEqual(activity('/driver/location/update/'), 'GPS Captured -> Location Saved -> Tracking Updated')
 
     def test_proxy_trust(self):
         self.assertEqual(client_ip('192.168.56.1', '1.2.3.4', []), '192.168.56.1')
@@ -63,7 +66,7 @@ class RequestLoggingTests(unittest.TestCase):
                                 'client': ('127.0.0.1', 1)}, receive, send))
         self.assertEqual([m.get('body') for m in events[1:]], [b'a', b'b'])
         self.assertEqual(self.output.getvalue().count('REQUEST'), 1)
-        self.assertIn('UserID: 7', self.output.getvalue())
+        self.assertIn('DriverID=7', self.output.getvalue())
 
     def test_exception_is_preserved_without_secret(self):
         async def app(scope, receive, send):
@@ -73,7 +76,7 @@ class RequestLoggingTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             asyncio.run(middleware({'type': 'http', 'path': '/customer/orders'}, None, None))
         self.assertIn('[ERROR]', self.output.getvalue())
-        self.assertIn('RESPONSE 500', self.output.getvalue())
+        self.assertIn('HTTPStatus=500', self.output.getvalue())
         self.assertNotIn('private-token', self.output.getvalue())
 
 if __name__ == '__main__':

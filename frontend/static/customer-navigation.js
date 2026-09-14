@@ -82,6 +82,11 @@
  }
  document.querySelector('[data-notifications-open]').onclick=()=>{selection++;details.hidden=true;list.hidden=false;if(!panel.open)panel.showModal();if(Date.now()-loadedAt>15000)void load();};
  panel.querySelector('[data-notifications-close]').onclick=()=>{selection++;panel.close();};
+ panel.addEventListener('click',event=>{
+  if(event.target!==panel)return;
+  const rect=panel.getBoundingClientRect();
+  if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)panel.close();
+ });
  panel.addEventListener('close',()=>selection++);
  load();setInterval(()=>{if(!document.hidden)load();},60000);
 })();

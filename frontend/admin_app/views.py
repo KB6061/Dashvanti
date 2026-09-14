@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 from django.conf import settings
 from django.contrib import messages
 from django.shortcuts import redirect, render
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
 import httpx
 import sys
@@ -265,7 +265,9 @@ def operations(request):
 
 @admin_required
 @require_http_methods(['GET', 'POST'])
-def funds(request):
+def funds(request, section='revenue'):
+    valid_fund_sections = {'revenue','orders','refunds','drivers','restaurants','commission','quick-pay','pricing'}
+    section = section if section in valid_fund_sections else 'revenue'
     if request.method == 'POST':
         try:
             action = request.POST.get('action')
@@ -287,6 +289,12 @@ def funds(request):
                     'reason': request.POST.get('reason'),
                 })
                 messages.success(request, 'Refund request saved. Transfer is pending payment-provider processing.')
+            elif action == 'quick_pay':
+                result = admin_api('POST', '/operations/funds/quick-pay', {
+                    'order_id': request.POST.get('order_id'),
+                    'payee_role': request.POST.get('payee_role'),
+                })
+                messages.success(request, f"Quick-pay completed: {result['reference']}")
             elif action == 'delete':
                 admin_api('DELETE', '/operations/funds/rules/' + request.POST.get('kind', ''))
                 messages.success(request, 'Rule deleted')
@@ -298,10 +306,29 @@ def funds(request):
                 messages.success(request, 'Pricing saved')
         except (RuntimeError, httpx.HTTPError) as exc:
             messages.error(request, str(exc))
-        return redirect('/admin/funds')
+        return redirect('/admin/funds/' + section)
     from django.core.paginator import Paginator
+    from backend.services import revenue_service
     data = admin_api('GET', '/operations/funds')
     data['cancellation_policy'] = admin_api('GET','/operations/cancellation-policy')
+    revenue_params = {key: request.GET.get(key, '').strip() for key in ('date_range','start_date','end_date','restaurant_id','driver_id','payment_mode','status','q')}
+    revenue = admin_api('GET', '/operations/funds/revenue?' + urlencode(revenue_params))
+    if request.GET.get('export') == 'csv':
+        response = HttpResponse(revenue_service.export_csv(revenue['rows']), content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename=admin-revenue.csv'
+        return response
+    if request.GET.get('export') == 'pdf':
+        response = HttpResponse(revenue_service.export_pdf(revenue['rows']), content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename=admin-revenue.pdf'
+        return response
+    revenue_size = request.GET.get('revenue_size', '25')
+    revenue_size = int(revenue_size) if revenue_size in {'25', '50', '100'} else 25
+    revenue_page = Paginator(revenue['rows'], revenue_size).get_page(request.GET.get('revenue_page'))
+    revenue['paged_rows'] = revenue_page.object_list
+    revenue['page'] = revenue_page
+    revenue['total_rows'] = len(revenue['rows'])
+    export_params = revenue_params.copy()
+    data['export_query'] = urlencode(export_params)
     query = request.GET.get('q', '').strip()
     status = request.GET.get('status', '')
     rows = data['refunds']
@@ -313,7 +340,7 @@ def funds(request):
     size = request.GET.get('size', '25')
     size = int(size) if size in {'25', '50', '100'} else 25
     page = Paginator(rows, size).get_page(request.GET.get('page'))
-    data.update(refunds=page.object_list, refund_page=page, refund_total=len(rows), refund_query=query, refund_status=status, refund_statuses=statuses, page_size=size)
+    data.update(revenue=revenue, revenue_filters=revenue_params, refunds=page.object_list, refund_page=page, refund_total=len(rows), refund_query=query, refund_status=status, refund_statuses=statuses, page_size=size, fund_section=section, fund_base='/admin/funds/' + section)
     return render(request, 'admin_app/funds.html', dict(data, title='Fund Management', active_nav='funds'))
 
 

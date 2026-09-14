@@ -15,6 +15,8 @@ def current_user(request: Request, auth: HTTPAuthorizationCredentials = Depends(
         if not user or user.token_version != claims['ver']:
             raise ValueError()
         request.state.log_user_id = user.id
+        request.state.log_user_name = user.name or '-'
+        request.state.log_user_phone = user.phone or '-'
         return user
     except (jwt.PyJWTError, ValueError, KeyError):
         raise HTTPException(401, 'Session expired')

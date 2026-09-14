@@ -205,6 +205,10 @@ class RefundInput(BaseModel):
     amount: Decimal = Field(gt=0, le=100000, decimal_places=2)
     reason: str = Field(min_length=3, max_length=500)
 
+class QuickPayInput(BaseModel):
+    order_id: int = Field(gt=0)
+    payee_role: Literal['driver', 'restaurant']
+
 class RoutePoint(BaseModel):
     latitude: float = Field(ge=-90, le=90, allow_inf_nan=False)
     longitude: float = Field(ge=-180, le=180, allow_inf_nan=False)

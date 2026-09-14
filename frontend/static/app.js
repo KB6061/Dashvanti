@@ -611,6 +611,11 @@ function closeCustomerSuggestions() {
   customerSearchPanel.replaceChildren();
   customerSearchActive = -1;
 }
+function submitCustomerSearchNow() {
+  if (!customerSearchInput?.form) return;
+  clearTimeout(customerSearchTimer);
+  customerSearchTimer = setTimeout(() => customerSearchInput.form.requestSubmit(), 120);
+}
 function selectCustomerSuggestion(button) {
   if (!button || !customerSearchInput) return;
   customerSearchInput.value = button.dataset.searchValue;
@@ -655,14 +660,15 @@ async function loadCustomerSuggestions() {
     }));
     customerSearchPanel.hidden = !data.items.length;
     customerSearchActive = -1;
+    submitCustomerSearchNow();
   } catch (error) {
     if (error.name !== 'AbortError' && request === customerSearchRequest) closeCustomerSuggestions();
   }
 }
 if (customerSearchInput && customerSearchPanel) {
   customerSearchInput.addEventListener('input', () => {
-    clearTimeout(customerSearchTimer);
     loadCustomerSuggestions();
+    submitCustomerSearchNow();
   });
   customerSearchInput.addEventListener('focus', () => {
     if (customerSearchInput.value.trim()) loadCustomerSuggestions();

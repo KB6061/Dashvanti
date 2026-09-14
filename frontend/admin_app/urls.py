@@ -6,6 +6,7 @@ urlpatterns = [
     path('order/<int:order_id>/cancellation', views.cancellation),
     path('route-distance', common.route_distance),
     path('funds', views.funds),
+    path('funds/<str:section>', views.funds),
     path('login', views.login),
     path('dashboard', views.dashboard),
     path('content', views.content),

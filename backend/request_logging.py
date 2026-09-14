@@ -30,6 +30,16 @@ class RequestLoggingMiddleware:
             failed = True
             raise
         finally:
-            identity = scope.get('state', {}).get('log_user_id', '-')
+            state = scope.get('state', {})
+            identity = state.get('log_user_id', '-')
+            headers_text = {k.decode('latin-1'): v.decode('latin-1') for k, v in headers.items()}
             log_request(self.logger, scope.get('path', '/'), status, started,
-                        identity, ip, failed)
+                        identity, ip, failed, scope.get('method', 'REQUEST'), {
+                            'user_name': state.get('log_user_name', '-'),
+                            'phone': state.get('log_user_phone', '-'),
+                            'device': headers_text.get('x-device', '-'),
+                            'app_version': headers_text.get('x-app-version', '-'),
+                            'geo': headers_text.get('x-geo', '-'),
+                            'correlation_id': headers_text.get('x-correlation-id', ''),
+                            'request_id': headers_text.get('x-request-id', ''),
+                        })

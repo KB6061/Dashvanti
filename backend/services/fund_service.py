@@ -5,7 +5,7 @@ from sqlalchemy import select
 from backend.models import SystemConfig, Order, AuditEvent
 
 PREFIX = 'fund:'
-KINDS = ('tax', 'service_fee', 'delivery_fee', 'discount', 'refund_limit')
+KINDS = ('tax', 'service_fee', 'delivery_fee', 'discount', 'refund_limit', 'restaurant_commission')
 def rules(db):
     return [dict(json.loads(row.value), kind=row.key[len(PREFIX):]) for row in db.scalars(select(SystemConfig).where(SystemConfig.key.like(PREFIX + '%')).order_by(SystemConfig.key))]
 

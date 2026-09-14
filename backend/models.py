@@ -96,6 +96,7 @@ class Order(Identity, Base):
     request_key: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(40), default='PLACED')
     mode: Mapped[str] = mapped_column(String(20))
+    payment_mode: Mapped[str] = mapped_column(String(40), default='Card')
     address: Mapped[str] = mapped_column(String(500))
     total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     tip: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
@@ -120,6 +121,19 @@ class OrderItem(Identity, Base):
     special_instructions: Mapped[str | None] = mapped_column(String(1000))
     quantity: Mapped[int]
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+
+
+class PayoutTransaction(Identity, Base):
+    __tablename__ = 'payout_transactions'
+    order_id: Mapped[int] = mapped_column(ForeignKey('orders.id'), index=True)
+    payee_role: Mapped[str] = mapped_column(String(20), index=True)
+    payee_id: Mapped[int] = mapped_column(Integer, index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    status: Mapped[str] = mapped_column(String(20), default='PENDING', index=True)
+    method: Mapped[str] = mapped_column(String(30), default='QUICK_PAY')
+    reference: Mapped[str] = mapped_column(String(80), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 class DeliveryStatus(Identity, Base):
     __tablename__ = 'delivery_status'

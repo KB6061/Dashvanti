@@ -59,12 +59,21 @@ class UIActivityLogMiddleware:
             failed = True
             raise
         finally:
+            session = getattr(request, 'session', {})
             log_request(
                 self.logger, request.path, status, started,
                 getattr(request, '_log_identity', identity) if getattr(request, '_log_identity', identity) != '-' else self._identity(request),
                 client_ip(request.META.get('REMOTE_ADDR', '-'),
                           request.META.get('HTTP_X_FORWARDED_FOR', '')),
-                failed,
+                failed, request.method, {
+                    'user_name': session.get('name', '-'),
+                    'phone': session.get('phone', '-'),
+                    'device': request.META.get('HTTP_X_DEVICE', '-'),
+                    'app_version': request.META.get('HTTP_X_APP_VERSION', '-'),
+                    'geo': request.META.get('HTTP_X_GEO', '-'),
+                    'correlation_id': request.META.get('HTTP_X_CORRELATION_ID', ''),
+                    'request_id': request.META.get('HTTP_X_REQUEST_ID', ''),
+                },
             )
 
     def process_view(self, request, view_func, view_args, view_kwargs):

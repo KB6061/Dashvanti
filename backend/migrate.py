@@ -23,6 +23,7 @@ EXTRA_COLUMNS = {
         ('vehicle_number', 'VARCHAR2(80 CHAR)', "''"),
     ],
     'orders': [
+        ('payment_mode', 'VARCHAR2(40 CHAR)', "'Card'"),
         ('tip', 'NUMBER(12,2)', '0'),
         ('tax', 'NUMBER(12,2)', '0'),
         ('service_fee', 'NUMBER(12,2)', '0'),
@@ -43,6 +44,7 @@ EXTRA_COLUMNS = {
 EXTRA_TABLES = [
     models.DriverLocation.__table__,
     models.CustomerLocation.__table__,
+    models.PayoutTransaction.__table__,
 ]
 
 def add_missing_columns():

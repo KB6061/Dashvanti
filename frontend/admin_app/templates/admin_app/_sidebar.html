@@ -8,7 +8,7 @@
     <a class="{% if active_nav == 'driver' %}active{% endif %}" href="/admin/drivers"><span>⇢</span>Delivery Fleet</a>
     <a class="{% if active_nav == 'customer' or active_nav == 'customers' %}active{% endif %}" href="/admin/users?role=customer"><span>◎</span>Customers</a>
     <a class="{% if active_nav == 'promotions' %}active{% endif %}" href="/admin/content"><span>◇</span>Promotions</a>
-    <a href="/admin/funds">Fund Management</a>
+    <div class="admin-nav-group {% if active_nav == 'funds' %}active{% endif %}"><a class="admin-nav-parent" href="/admin/funds/revenue"><span>$</span>Fund Management</a><div class="admin-subnav"><a class="{% if fund_section == 'revenue' %}active{% endif %}" href="/admin/funds/revenue">Revenue</a><a class="{% if fund_section == 'orders' %}active{% endif %}" href="/admin/funds/orders">Order Review</a><a class="{% if fund_section == 'refunds' %}active{% endif %}" href="/admin/funds/refunds">Refunds</a><a class="{% if fund_section == 'drivers' %}active{% endif %}" href="/admin/funds/drivers">Driver Payouts</a><a class="{% if fund_section == 'restaurants' %}active{% endif %}" href="/admin/funds/restaurants">Restaurant Payouts</a><a class="{% if fund_section == 'commission' %}active{% endif %}" href="/admin/funds/commission">Commission</a><a class="{% if fund_section == 'quick-pay' %}active{% endif %}" href="/admin/funds/quick-pay">Quick Pay</a><a class="{% if fund_section == 'pricing' %}active{% endif %}" href="/admin/funds/pricing">Pricing Rules</a></div></div>
     <a href="/admin/dashboard#finances"><span>$</span>Finances</a>
     <a href="/admin/dashboard#analytics"><span>↗</span>Analytics</a>
     <a class="{% if active_nav == 'settings' %}active{% endif %}" href="/admin/operations"><span>⚙</span>Settings</a>
