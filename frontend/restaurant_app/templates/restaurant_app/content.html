@@ -1,9 +1,9 @@
 {% extends 'base.html' %}
 {% block content %}
 <section class="operations-shell">
-  <div class="intro"><div><p class="eyebrow">RESTAURANT CONTENT</p><h1>Brand & kitchen controls</h1><p>Update customer-facing photography and capacity from one saved workspace.</p></div></div>
+  <div class="intro"><div><p class="eyebrow">RESTAURANT CONTENT</p><h1>Hotel banner & brand controls</h1><p>Upload the hotel banner shown on customer and restaurant portals.</p></div></div>
   <form method="post" enctype="multipart/form-data" class="form-card operations-form">{% csrf_token %}
-    <div class="form-columns"><label>Cover photo <input type="file" name="cover" accept="image/jpeg,image/png,image/webp"></label><label>Logo <input type="file" name="logo" accept="image/jpeg,image/png,image/webp"></label></div>
+    <div class="form-columns"><label>Hotel banner <input type="file" name="cover" accept="image/jpeg,image/png,image/webp"></label><label>Restaurant logo <input type="file" name="logo" accept="image/jpeg,image/png,image/webp"></label></div>{% if content.cover_file_id %}<div class="restaurant-banner-preview"><img src="/restaurant/files/{{ content.cover_file_id }}" alt="Current hotel banner"><span>Current hotel banner</span></div>{% endif %}
     <label>Gallery photos <input type="file" name="gallery" multiple accept="image/jpeg,image/png,image/webp"></label>
     {% if content.gallery_file_ids %}<div class="gallery-picker">{% for file_id in content.gallery_file_ids %}<label><img src="/restaurant/files/{{ file_id }}" alt="Gallery photo"><span><input type="checkbox" name="remove_gallery" value="{{ file_id }}"> Remove</span></label>{% endfor %}</div>{% endif %}
     <label>Kitchen mode <select name="busy_mode"><option value="open" {% if content.busy_mode == 'open' %}selected{% endif %}>Open</option><option value="busy" {% if content.busy_mode == 'busy' %}selected{% endif %}>Busy — longer preparation</option><option value="paused" {% if content.busy_mode == 'paused' %}selected{% endif %}>Paused — no new orders</option></select></label>

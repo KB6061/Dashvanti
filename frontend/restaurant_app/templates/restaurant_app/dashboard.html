@@ -2,15 +2,13 @@
 {% block content %}
 <section class="restaurant-console" data-auto-refresh>
   <aside class="restaurant-sidebar">
-    <div class="restaurant-mini-brand">
-
-      <span>{{ profile.name|default:'Dashvanti' }}</span>
-    </div>
+    <div class="restaurant-mini-brand">{% if restaurant_logo_url %}<img src="{{ restaurant_logo_url }}" alt="{{ profile.name }} logo">{% endif %}<span>{{ profile.name|default:'Dashvanti' }}</span></div>
     <nav>
       <a class="active" href="/restaurant/dashboard">Dashboard</a>
       <a href="/restaurant/orders">Live Orders</a>
       <a href="/restaurant/menu">Menu Manager</a>
       <a href="/restaurant/stats">Insights</a>
+      <a href="/restaurant/content">Brand</a>
       <a href="/restaurant/profile">Settings</a>
     </nav>
   </aside>
@@ -25,6 +23,7 @@
         {% if profile.is_open %}Open{% else %}Closed{% endif %}
       </div>
     </div>
+    <section class="restaurant-dashboard-banner">{% if banner_url %}<img src="{{ banner_url }}" alt="{{ profile.name }} banner">{% else %}<div><strong>{{ profile.name|default:'Restaurant' }}</strong><a href="/restaurant/content">Upload hotel banner</a></div>{% endif %}</section>
     <section class="restaurant-live-controls">
       <form method="post">
         {% csrf_token %}

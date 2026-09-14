@@ -32,6 +32,9 @@ def dashboard(request):
         call(request,'POST','/restaurant/hours/update',{'opening': request.POST.get('opening','09:00'), 'closing': request.POST.get('closing','22:00')})
         return redirect(request.path)
     profile = call(request,'GET','/me')['restaurant']
+    content = call(request, 'GET', '/content/restaurant')
+    banner_id = content.get('cover_file_id')
+    logo_id = content.get('logo_file_id')
     orders = call(request,'GET','/orders')
     menu_items = call(request,'GET','/menu')
     stats_data = call(request,'GET','/stats',params={'period':'daily'})
@@ -51,6 +54,9 @@ def dashboard(request):
     chart_points = [42, 76, 61, 124, 88, 132, 95]
     context = {
         'profile': profile,
+        'content': content,
+        'banner_url': f'/restaurant/files/{banner_id}' if banner_id else '',
+        'restaurant_logo_url': f'/restaurant/files/{logo_id}' if logo_id else '',
         'orders': orders,
         'incoming_orders': [row for row in orders if row.get('status') == 'PLACED'][:3],
         'menu_items': menu_items[:6],
