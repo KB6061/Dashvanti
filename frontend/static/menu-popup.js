@@ -6,11 +6,13 @@
   popup.innerHTML='<button type="button" class="menu-popup-close" aria-label="Close menu details">&times;</button><h2 id="menu-popup-title"></h2><p data-menu-meta></p><img data-menu-photo alt=""><p data-menu-description></p><form><h3>Your preferences</h3><p>Optional requests, subject to restaurant availability. Preferences apply to all quantities of this item.</p><label>Spice preference<select name="spice"><option value="">No preference</option><option>Mild</option><option>Medium</option><option>Hot</option></select></label><label>Cutlery<select name="cutlery"><option value="">No preference</option><option>No cutlery</option><option>Please include cutlery</option></select></label><label>Special instructions<textarea name="instructions" maxlength="850" rows="3" placeholder="Tell the kitchen your preferences"></textarea></label><label>Quantity<input name="quantity" type="number" min="1" max="50" value="1" required></label><p data-menu-status role="status"></p><footer><button type="submit"></button></footer></form>';
   document.body.append(popup);form=popup.querySelector('form');
   popup.querySelector('.menu-popup-close').onclick=()=>popup.close();
-  popup.addEventListener('click',event=>{
-   if(event.target!==popup)return;
+  const closeFromBackdrop=event=>{
+   if(!popup.open)return;
    const rect=popup.getBoundingClientRect();
    if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)popup.close();
-  });
+  };
+  popup.addEventListener('pointerdown',closeFromBackdrop);
+  popup.addEventListener('click',event=>{if(event.target===popup)closeFromBackdrop(event);});
   popup.addEventListener('close',()=>{sequence++;currentCard?.focus();});
   form.onsubmit=async event=>{
    event.preventDefault();event.stopPropagation();if(busy)return;
