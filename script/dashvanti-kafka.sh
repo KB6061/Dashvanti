@@ -14,7 +14,11 @@ KAFKA_LOG="$LOG_DIR/kafka.log"
 WORKER_LOG="$LOG_DIR/kafka-worker.log"
 
 cd "$APP_DIR"
+umask 000
 mkdir -p "$RUN_DIR" "$LOG_DIR"
+chmod 777 "$LOG_DIR" >/dev/null 2>&1 || true
+touch "$KAFKA_LOG" "$WORKER_LOG"
+chmod 666 "$KAFKA_LOG" "$WORKER_LOG" >/dev/null 2>&1 || true
 
 kafka_bin() {
   printf '%s/bin/%s\n' "$KAFKA_HOME" "$1"
@@ -76,6 +80,8 @@ start_kafka() {
     echo "kafka running pid=$pid"
     return 0
   fi
+  touch "$KAFKA_LOG"
+  chmod 666 "$KAFKA_LOG" >/dev/null 2>&1 || true
   nohup setsid "$(kafka_bin kafka-server-start.sh)" "$KAFKA_CONFIG" >> "$KAFKA_LOG" 2>&1 < /dev/null &
   echo "$!" > "$KAFKA_PID"
   wait_kafka
@@ -116,6 +122,8 @@ start_worker() {
     echo "worker running pid=$pid"
     return 0
   fi
+  touch "$WORKER_LOG"
+  chmod 666 "$WORKER_LOG" >/dev/null 2>&1 || true
   KAFKA_BOOTSTRAP_SERVERS="$KAFKA_BOOTSTRAP_SERVERS" nohup setsid python3 -m backend.worker >> "$WORKER_LOG" 2>&1 < /dev/null &
   echo "$!" > "$WORKER_PID"
   echo "worker started pid=$(cat "$WORKER_PID")"
