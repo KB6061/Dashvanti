@@ -1,7 +1,8 @@
 from datetime import timedelta
+from decimal import Decimal
 from fastapi import HTTPException
 from sqlalchemy import select, func
-from backend.models import Order, OrderItem, Driver, DriverLocation, DeliveryStatus, Restaurant, User, SystemConfig, now
+from backend.models import Order, OrderItem, Driver, DriverLocation, DeliveryStatus, Restaurant, User, SystemConfig, PayoutTransaction, now
 from backend.services.order_service import owned
 from backend.services.kafka_event_service import emit
 
@@ -173,3 +174,37 @@ def stats(db, user, period):
         rows = db.execute(select(OrderItem.name, func.sum(OrderItem.quantity).label('units')).join(Order, OrderItem.order_id == Order.id).where(*filters).group_by(OrderItem.name).order_by(func.sum(OrderItem.quantity).desc()).limit(10))
         top = [{'name':name, 'units':units} for name,units in rows]
     return {'period':period, 'orders':count, 'revenue':revenue, 'top_items':top}
+
+
+def payment_history(db, user):
+    orders = list(db.scalars(select(Order).where(Order.driver_id == user.id).order_by(Order.id.desc()).limit(500)))
+    paid = {}
+    if orders:
+        for row in db.scalars(select(PayoutTransaction).where(PayoutTransaction.payee_role == 'driver', PayoutTransaction.order_id.in_([order.id for order in orders]))):
+            paid[row.order_id] = paid.get(row.order_id, Decimal('0')) + Decimal(str(row.amount or 0))
+    rows = []
+    total_earned = Decimal('0')
+    total_paid = Decimal('0')
+    for order in orders:
+        amount = Decimal(str(order.delivery_fee or 0)) + Decimal(str(order.tip or 0)) if order.mode == 'delivery' else Decimal('0')
+        paid_amount = paid.get(order.id, Decimal('0'))
+        total_earned += amount if order.status == 'DELIVERED' else Decimal('0')
+        total_paid += paid_amount
+        status = 'PAID' if paid_amount >= amount and amount > 0 else ('PENDING ADMIN PAY' if order.status == 'DELIVERED' and amount > 0 else 'NOT READY')
+        restaurant = db.get(Restaurant, order.restaurant_id)
+        customer = db.get(User, order.customer_id)
+        rows.append({
+            'order_id': order.id,
+            'restaurant_name': restaurant.name if restaurant else 'Restaurant',
+            'customer_name': customer.name if customer else 'Customer',
+            'order_status': order.status,
+            'payment_status': status,
+            'payment_mode': order.payment_mode or 'Card',
+            'delivery_fee': order.delivery_fee,
+            'tip': order.tip,
+            'payout_amount': amount,
+            'paid_amount': paid_amount,
+            'pending_amount': max(amount - paid_amount, Decimal('0')),
+            'timestamp': order.created_at,
+        })
+    return {'rows': rows, 'summary': {'earned': total_earned, 'paid': total_paid, 'pending': max(total_earned - total_paid, Decimal('0'))}}

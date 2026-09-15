@@ -159,6 +159,10 @@ def order_driver_location(order_id: int, response: Response, user=Depends(curren
 def stats(period: str = 'daily', user=Depends(role('restaurant','driver')), db=Depends(get_db, scope='function')):
     return delivery_service.stats(db,user,period)
 
+@router.get('/driver/payments')
+def driver_payments(user=Depends(driver), db=Depends(get_db, scope='function')):
+    return delivery_service.payment_history(db, user)
+
 @router.get('/files')
 def files(user=Depends(current_user), db=Depends(get_db, scope='function')):
     return file_service.listing(db,user)

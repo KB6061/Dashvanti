@@ -169,8 +169,8 @@
   }finally{busy=false;}
  }
  loadPreference().then(()=>poll()).catch(()=>{soundStatus.textContent='Reconnecting notification settings…';});
- setInterval(()=>{if(storageKey)poll().catch(()=>{soundStatus.textContent='Reconnecting order notifications…';});},3000);
- setInterval(()=>loadPreference().catch(()=>{soundStatus.textContent='Reconnecting notification settings…';}),15000);
+ setInterval(()=>{if(storageKey&&!document.hidden)poll().catch(()=>{soundStatus.textContent='Reconnecting order notifications…';});},7000);
+ setInterval(()=>{if(!document.hidden)loadPreference().catch(()=>{soundStatus.textContent='Reconnecting notification settings…';});},60000);
 
 })();
 (() => {
@@ -194,5 +194,5 @@
     if(history&&updated)history.replaceWith(updated);
    }
   }catch(_){}finally{busy=false;}
- },5000);
+ },12000);
 })();

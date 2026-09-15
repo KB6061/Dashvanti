@@ -346,10 +346,27 @@ tail_logs() {
   tail -f "$API_LOG" "$RESTAURANT_ORDER_LOG" "$LOG_DIR/customer-web.log" "$LOG_DIR/restaurant-web.log" "$LOG_DIR/driver-web.log" "$LOG_DIR/admin-web.log" "$LOG_DIR/customer-ui-activity.log" "$LOG_DIR/restaurant-ui-activity.log" "$LOG_DIR/driver-ui-activity.log" "$LOG_DIR/admin-ui-activity.log"
 }
 
+run_background() {
+  local action="$1" target="${2:-all}" log_file
+  setup
+  case "$action" in
+    start) log_file="$START_LOG" ;;
+    stop) log_file="$STOP_LOG" ;;
+    restart) log_file="$RESTART_LOG" ;;
+    *) return 2 ;;
+  esac
+  nohup setsid "$0" "__${action}" "$target" >> "$log_file" 2>&1 < /dev/null &
+  printf '%s requested target=%s pid=%s log=%s
+' "$action" "$target" "$!" "$log_file"
+}
+
 case "${1:-}" in
-  start) start_services "${2:-all}" ;;
-  stop) stop_services "${2:-all}" ;;
-  restart) restart_services "${2:-all}" ;;
+  start) run_background start "${2:-all}" ;;
+  stop) run_background stop "${2:-all}" ;;
+  restart) run_background restart "${2:-all}" ;;
+  __start) start_services "${2:-all}" ;;
+  __stop) stop_services "${2:-all}" ;;
+  __restart) restart_services "${2:-all}" ;;
   status) status_services ;;
   logs) show_logs ;;
   tail) tail_logs ;;

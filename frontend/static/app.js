@@ -54,11 +54,6 @@ if (tracker) {
 }
 
 
-if (document.querySelector('[data-auto-refresh]') && !document.querySelector('[data-order-alerts]')) {
-  setTimeout(() => {
-    if (!document.hidden) location.reload();
-  }, 15000);
-}
 
 const accountDrawer = document.querySelector('.account-drawer');
 const accountBackdrop = document.querySelector('.account-backdrop');
@@ -885,4 +880,15 @@ if (checkoutPage && checkoutForm) {
  new MutationObserver(estimate).observe(page,{attributes:true,attributeFilter:['data-checkout-mode']});
  estimate();
  setInterval(()=>{if(!document.hidden){lastKey='';estimate();}},120000);
+})();
+
+(function () {
+  const adminSidebar = document.querySelector('[data-admin-sidebar]');
+  if (!adminSidebar) return;
+  const fundGroup = adminSidebar.querySelector('[data-fund-group]');
+  if (!fundGroup) return;
+  adminSidebar.addEventListener('click', function (event) {
+    const link = event.target.closest('a');
+    if (link && !link.closest('[data-fund-group]')) fundGroup.classList.remove('active');
+  });
 })();

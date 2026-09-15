@@ -25,6 +25,7 @@ urlpatterns = [
     path('dashboard',views.dashboard),
     path('order/<int:order_id>/accept',views.accept),
     path('earnings',views.stats),
+    path('payments',views.payments),
     path('support',common.support),
     path('notifications',common.notifications),
     path('order/<int:order_id>/chat',common.chat),

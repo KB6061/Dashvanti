@@ -104,3 +104,9 @@ def presence(request):
         return JsonResponse({'detail': 'Invalid availability request'}, status=400)
     except APIError as exc:
         return JsonResponse({'detail': str(exc)}, status=exc.status)
+
+
+@protected
+def payments(request):
+    data = call(request, 'GET', '/driver/payments')
+    return render(request, 'driver_app/payments.html', {'payments': data['rows'], 'summary': data['summary'], 'title': 'Driver payments'})

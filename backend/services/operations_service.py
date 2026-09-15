@@ -13,8 +13,8 @@ from backend.services import order_service
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
-def audit(db, actor_id, action, target, details=''):
-    db.add(AuditEvent(actor_id=actor_id, action=action, target=target, details=details))
+def audit(db, actor_id, action, target, details='-'):
+    db.add(AuditEvent(actor_id=actor_id, action=action, target=target, details=details or '-'))
 
 def notify(db, user_id, kind, body, order_id=None):
     if user_id:
@@ -51,17 +51,19 @@ def save_presentation(db, user, data):
         raise HTTPException(422, 'Use up to 12 gallery photos')
     for file_id in [payload['cover_file_id'], payload['logo_file_id'], *gallery]:
         _file(db, user, file_id)
-    row = db.get(RestaurantPresentation, user.id)
-    if not row:
-        row = RestaurantPresentation(restaurant_id=user.id)
-        db.add(row)
-    row.cover_file_id = payload['cover_file_id']
-    row.logo_file_id = payload['logo_file_id']
-    row.gallery_file_ids = json.dumps(gallery)
-    row.busy_mode = payload['busy_mode']
-    row.busy_until = payload['busy_until']
-    row.prep_extra_minutes = payload['prep_extra_minutes']
-    row.capacity = payload['capacity']
+    values = {
+        'cover_file_id': payload['cover_file_id'],
+        'logo_file_id': payload['logo_file_id'],
+        'gallery_file_ids': json.dumps(gallery),
+        'busy_mode': payload['busy_mode'],
+        'busy_until': payload['busy_until'],
+        'prep_extra_minutes': payload['prep_extra_minutes'],
+        'capacity': payload['capacity'],
+        'updated_at': utcnow(),
+    }
+    updated = db.execute(update(RestaurantPresentation).where(RestaurantPresentation.restaurant_id == user.id).values(**values)).rowcount
+    if not updated:
+        db.add(RestaurantPresentation(restaurant_id=user.id, **values))
     audit(db, user.id, 'restaurant-presentation-saved', f'restaurant:{user.id}')
     db.flush()
     return presentation(db, user)

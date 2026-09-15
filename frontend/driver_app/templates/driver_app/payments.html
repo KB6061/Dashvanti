@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="driver-console">
+  <aside class="driver-sidebar">
+    <div class="driver-sidebar-label">Driver workspace</div>
+    <nav>
+      <a href="/driver/dashboard">Dashboard</a>
+      <a href="/driver/orders">Track Order</a>
+      <a href="/driver/orders">Active Deliveries</a>
+      <a href="/driver/payments" class="active">Payment</a>
+      <a href="/driver/earnings">Earning Reports</a>
+      <a href="/driver/profile">Profile</a>
+      <a href="/driver/files">Support</a>
+    </nav>
+  </aside>
+  <div class="driver-workspace">
+    <header class="driver-topbar"><p class="eyebrow">Driver payout center</p><h1>Payment</h1></header>
+    <section class="driver-payment-summary">
+      <article><span>Total earned</span><strong>${{ summary.earned|floatformat:2 }}</strong></article>
+      <article><span>Paid by admin</span><strong>${{ summary.paid|floatformat:2 }}</strong></article>
+      <article><span>Pending payout</span><strong>${{ summary.pending|floatformat:2 }}</strong></article>
+    </section>
+    <section class="driver-payment-panel">
+      <h2>Order payment status</h2>
+      <div class="admin-table-scroll"><table class="order-data-table" data-sort-table><thead><tr><th>OrderID</th><th>Restaurant</th><th>Customer</th><th>OrderStatus</th><th>PaymentStatus</th><th>Mode</th><th class="money">DeliveryFee</th><th class="money">Tip</th><th class="money">Payout</th><th class="money">Paid</th><th class="money">Pending</th><th>Timestamp</th></tr></thead><tbody>{% for row in payments %}<tr data-order-url="/driver/order/{{ row.order_id }}" tabindex="0"><td><a href="/driver/order/{{ row.order_id }}">#{{ row.order_id }}</a></td><td>{{ row.restaurant_name }}</td><td>{{ row.customer_name }}</td><td>{{ row.order_status|title }}</td><td><span class="driver-payment-status status-{{ row.payment_status|slugify }}">{{ row.payment_status }}</span></td><td>{{ row.payment_mode }}</td><td class="money">${{ row.delivery_fee|floatformat:2 }}</td><td class="money">${{ row.tip|floatformat:2 }}</td><td class="money">${{ row.payout_amount|floatformat:2 }}</td><td class="money">${{ row.paid_amount|floatformat:2 }}</td><td class="money">${{ row.pending_amount|floatformat:2 }}</td><td>{{ row.timestamp|date:'M d, Y, g:i A' }}</td></tr>{% empty %}<tr><td colspan="12">No payment records yet.</td></tr>{% endfor %}</tbody></table></div>
+    </section>
+  </div>
+</section>
+{% endblock %}

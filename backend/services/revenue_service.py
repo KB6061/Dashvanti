@@ -181,6 +181,8 @@ def revenue_report(db, filters):
             'timestamp': order.created_at.isoformat(sep=' ', timespec='minutes'),
             'driver_paid': money(paid.get((order.id, 'driver'), 0)),
             'restaurant_paid': money(paid.get((order.id, 'restaurant'), 0)),
+            'driver_payment_status': 'PAID' if paid.get((order.id, 'driver'), 0) >= driver_payout and driver_payout > 0 else ('PENDING ADMIN PAY' if order.driver_id and order.status in FINAL_STATUSES and driver_payout > 0 else 'NOT READY'),
+            'restaurant_payment_status': 'PAID' if paid.get((order.id, 'restaurant'), 0) >= restaurant_payout and restaurant_payout > 0 else ('PENDING ADMIN PAY' if order.status in FINAL_STATUSES and restaurant_payout > 0 else 'NOT READY'),
             'can_quick_pay_driver': bool(order.driver_id and order.status in FINAL_STATUSES and paid.get((order.id, 'driver'), 0) < driver_payout),
             'can_quick_pay_restaurant': bool(order.status in FINAL_STATUSES and paid.get((order.id, 'restaurant'), 0) < restaurant_payout),
         })
