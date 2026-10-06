@@ -1,0 +1,175 @@
+from datetime import date, datetime
+from decimal import Decimal
+from sqlalchemy import ForeignKey, String, Text, Numeric, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+from backend.db import Base
+from backend.models import Identity, now
+
+
+class DriverPartner(Base):
+    __tablename__ = 'driver_partners'
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), primary_key=True)
+    driver_code: Mapped[str | None] = mapped_column(String(20), unique=True)
+    country: Mapped[str] = mapped_column(String(2), default='IN')
+    status: Mapped[str] = mapped_column(String(30), default='DRAFT', index=True)
+    account_status: Mapped[str] = mapped_column(String(30), default='INACTIVE', index=True)
+    profile: Mapped[str] = mapped_column(Text, default='')
+    aadhaar_digest: Mapped[str | None] = mapped_column(String(64), unique=True)
+    mobile: Mapped[str | None] = mapped_column(String(20), unique=True)
+    notes: Mapped[str] = mapped_column(Text, default='')
+    created_at: Mapped[datetime] = mapped_column(default=now)
+    updated_at: Mapped[datetime] = mapped_column(default=now, onupdate=now)
+
+
+class DriverDocument(Identity, Base):
+    __tablename__ = 'driver_documents'
+    __table_args__ = (UniqueConstraint('driver_id', 'kind'),)
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), index=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    encrypted_path: Mapped[str] = mapped_column(Text)
+    mime: Mapped[str] = mapped_column(String(80))
+    expires_on: Mapped[date | None]
+    status: Mapped[str] = mapped_column(String(20), default='PENDING')
+    notes: Mapped[str] = mapped_column(Text, default='')
+    updated_at: Mapped[datetime] = mapped_column(default=now, onupdate=now)
+
+
+class DriverVerification(Identity, Base):
+    __tablename__ = 'driver_verifications'
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), index=True)
+    report: Mapped[str] = mapped_column(Text)
+    reviewer_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
+    created_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class DriverDeposit(Identity, Base):
+    __tablename__ = 'driver_deposits'
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), index=True)
+    payment_id: Mapped[int] = mapped_column(ForeignKey('pg_payments.id'), unique=True)
+    refund_id: Mapped[int | None] = mapped_column(ForeignKey('pg_refunds.id'))
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    currency: Mapped[str] = mapped_column(String(3), default='INR')
+    status: Mapped[str] = mapped_column(String(30), default='PENDING')
+    created_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class DriverWallet(Base):
+    __tablename__ = 'driver_wallets'
+    __table_args__ = (UniqueConstraint('driver_id', 'currency'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), index=True)
+    currency: Mapped[str] = mapped_column(String(3))
+    balance: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+
+
+class DriverEarning(Identity, Base):
+    __tablename__ = 'driver_earnings'
+    order_id: Mapped[int] = mapped_column(ForeignKey('orders.id'), unique=True)
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), index=True)
+    currency: Mapped[str] = mapped_column(String(3))
+    base_pay: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    distance_pay: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    incentive: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    tips: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    created_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class DriverWithdrawal(Identity, Base):
+    __tablename__ = 'driver_withdrawals'
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), index=True)
+    request_key: Mapped[str] = mapped_column(String(64), unique=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    currency: Mapped[str] = mapped_column(String(3))
+    method: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default='REQUESTED')
+    reference: Mapped[str | None] = mapped_column(String(120), unique=True)
+    notes: Mapped[str] = mapped_column(Text, default='')
+    created_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class DriverWithdrawalAllocation(Identity, Base):
+    __tablename__ = 'driver_withdrawal_allocations'
+    withdrawal_id: Mapped[int] = mapped_column(ForeignKey('driver_withdrawals.id'), index=True)
+    payout_id: Mapped[int] = mapped_column(ForeignKey('payout_transactions.id'), unique=True)
+
+
+class DriverIncident(Identity, Base):
+    __tablename__ = 'driver_incidents'
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), index=True)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey('orders.id'))
+    kind: Mapped[str] = mapped_column(String(40))
+    description: Mapped[str] = mapped_column(Text)
+    latitude: Mapped[float | None]
+    longitude: Mapped[float | None]
+    status: Mapped[str] = mapped_column(String(20), default='OPEN')
+    resolution: Mapped[str] = mapped_column(Text, default='')
+    created_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class DriverNominee(Base):
+    __tablename__ = 'driver_nominees'
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), primary_key=True)
+    encrypted_details: Mapped[str] = mapped_column(Text)
+
+
+class DriverInsurance(Base):
+    __tablename__ = 'driver_insurance'
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), primary_key=True)
+    insurer: Mapped[str] = mapped_column(String(120), default='')
+    policy_number: Mapped[str] = mapped_column(String(120), default='')
+    expires_on: Mapped[date | None]
+    active: Mapped[bool] = mapped_column(default=False)
+    death_cover: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=1000000)
+    disability_cover: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=1000000)
+    hospitalization_cover: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=200000)
+
+
+class DriverInsuranceClaim(Identity, Base):
+    __tablename__ = 'driver_insurance_claims'
+    __table_args__ = (UniqueConstraint('driver_id', 'reference'),)
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), index=True)
+    incident_id: Mapped[int] = mapped_column(ForeignKey('driver_incidents.id'))
+    reference: Mapped[str] = mapped_column(String(120))
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    status: Mapped[str] = mapped_column(String(30), default='SUBMITTED')
+    created_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class DriverOffer(Identity, Base):
+    __tablename__ = 'driver_orders'
+    __table_args__ = (UniqueConstraint('order_id', 'driver_id'),)
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), index=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey('orders.id'), index=True)
+    status: Mapped[str] = mapped_column(String(20), default='OFFERED')
+    expires_at: Mapped[datetime]
+    created_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class DriverDeliveryOTP(Base):
+    __tablename__ = 'driver_delivery_otps'
+    order_id: Mapped[int] = mapped_column(ForeignKey('orders.id'), primary_key=True)
+    digest: Mapped[str] = mapped_column(String(64))
+    encrypted_code: Mapped[str] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(default=0)
+    verified_at: Mapped[datetime | None]
+    expires_at: Mapped[datetime]
+
+
+class DriverPartnerNotice(Identity, Base):
+    __tablename__ = 'driver_partner_notices'
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), index=True)
+    event: Mapped[str] = mapped_column(String(40))
+    body: Mapped[str] = mapped_column(Text)
+    recipient: Mapped[str] = mapped_column(String(254))
+    channel: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default='PENDING')
+    attempts: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(default=now)
+
+
+class DriverPushDevice(Base):
+    __tablename__ = 'driver_push_devices'
+    installation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), index=True)
+    token: Mapped[str] = mapped_column(Text, unique=True)
+    token_version: Mapped[int]

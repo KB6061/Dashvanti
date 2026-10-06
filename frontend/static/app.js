@@ -251,11 +251,14 @@ if (profilePhotoForm) {
 
 
 const customerLocationForm = document.querySelector('[data-customer-location-form]');
+if(customerLocationForm?.dataset.savedAddress==='true')window.dashvantiManualAddress=true;
 if (customerLocationForm && navigator.geolocation) {
   const locationText = document.querySelector('[data-customer-location-text]');
   const locationStatus = document.querySelector('[data-customer-location-status]');
   let lastLocationSave = 0;
+  let lastScopeLocation;
   const saveLocation = async (position) => {
+    if (window.dashvantiManualAddress) return;
     const {latitude, longitude} = position.coords;
     if (!window.dashvantiManualAddress) {
       if (locationText) locationText.textContent = latitude.toFixed(5) + ', ' + longitude.toFixed(5);
@@ -272,7 +275,15 @@ if (customerLocationForm && navigator.geolocation) {
         headers: {'X-Requested-With': 'fetch'},
       });
       if (!response.ok) throw new Error('Location update failed');
-      if (locationStatus) locationStatus.textContent = 'Live GPS saved';
+      const saved=await response.json();
+      if(saved.address){
+        window.dashvantiManualAddress=true;
+        if(locationText)locationText.textContent=saved.address;
+        const header=document.querySelector('[data-customer-header-address]');if(header)header.textContent=saved.address;
+      }
+      if (locationStatus) locationStatus.textContent = 'Current location saved';
+      const point=latitude.toFixed(3)+','+longitude.toFixed(3);
+      if(point!==lastScopeLocation){lastScopeLocation=point;document.dispatchEvent(new Event('dashvanti:delivery-location-changed'));}
     } catch (_) {
       if (locationStatus) locationStatus.textContent = 'Live GPS unavailable';
     }
@@ -284,28 +295,49 @@ if (customerLocationForm && navigator.geolocation) {
   }, {enableHighAccuracy: true, maximumAge: 10000, timeout: 15000});
 }
 
-const customerDashboard = document.querySelector('body.customer-dashboard-page');
+const customerDashboard = document.querySelector('body.customer-shell-page #menu-board');
 if (customerDashboard) {
   let dashboardRequest = 0;
   let dashboardAbort;
   let searchTimer;
-  const replaceDashboardSection = (documentFragment, selector) => {
+  const signatures=new WeakMap();
+  const signature=node=>node.outerHTML.replace(/(name="csrfmiddlewaretoken" value=")[^"]+/g,'$1');
+  const replaceDashboardSection = (documentFragment, selector, background=false) => {
     const current = document.querySelector(selector);
     const incoming = documentFragment.querySelector(selector);
-    if (current && incoming) current.replaceWith(incoming);
+    if(current && incoming){
+      const next=signature(incoming),previous=signatures.get(current)||signature(current);
+      if(next===previous)return;
+      if(background && (current.contains(document.activeElement)||current.querySelector('details[open]')))return;
+      const scrolls=[...current.querySelectorAll('*')].map(node=>({left:node.scrollLeft,top:node.scrollTop}));
+      signatures.set(incoming,next);current.replaceWith(incoming);
+      [...incoming.querySelectorAll('*')].forEach((node,index)=>{if(scrolls[index]){node.scrollLeft=scrolls[index].left;node.scrollTop=scrolls[index].top;}});
+    }
   };
-  const updateDashboard = async (url) => {
+  let markerSignature='';
+  const updateDashboard = async (url,background=false) => {
+    if(background && document.querySelector('dialog[open],.modal.show'))return;
     const request = ++dashboardRequest;
     dashboardAbort?.abort();dashboardAbort=new AbortController();
-    const response = await fetch(url, {signal:dashboardAbort.signal, credentials: 'same-origin', headers: {'X-Requested-With': 'fetch'}});
+    const response = await fetch(url, {signal:dashboardAbort.signal, cache: 'no-store', credentials: 'same-origin', headers: {'X-Requested-With': 'fetch'}});
     if (!response.ok || response.redirected) throw new Error('Dashboard update failed');
     const page = new DOMParser().parseFromString(await response.text(), 'text/html');
     if (request !== dashboardRequest) return;
-    replaceDashboardSection(page, '#menu-board .customer-section-head');
-    replaceDashboardSection(page, '#menu-board [data-restaurant-shelves]');
-    replaceDashboardSection(page, '#menu-board .restaurant-list-heading');
-    replaceDashboardSection(page, '#menu-board .restaurant-mini-list');
+    replaceDashboardSection(page, '#menu-board .customer-section-head',background);
+    replaceDashboardSection(page, '#menu-board [data-restaurant-shelves]',background);
+    replaceDashboardSection(page, '#menu-board .restaurant-list-heading',background);
+    replaceDashboardSection(page, '#menu-board .restaurant-mini-list',background);
+    replaceDashboardSection(page, '[data-location-scope]',background);
+    replaceDashboardSection(page, '.pickup-store-list',background);
+    const pickup=document.querySelector('[data-pickup-explorer]'),incomingPickup=page.querySelector('[data-pickup-explorer]');
+    if(pickup && incomingPickup){pickup.dataset.customerLatitude=incomingPickup.dataset.customerLatitude;pickup.dataset.customerLongitude=incomingPickup.dataset.customerLongitude;}
+    const markers=page.querySelector('#customer-restaurant-markers');
+    if(markers && markers.textContent!==markerSignature){markerSignature=markers.textContent;document.dispatchEvent(new CustomEvent('dashvanti:restaurant-scope',{detail:{markers:JSON.parse(markers.textContent)}}));}
   };
+  document.addEventListener('dashvanti:delivery-location-changed',()=>{
+    const search=document.querySelector('.customer-search [name=q]');if(search)search.value='';
+    updateDashboard(location.pathname).catch(()=>{});
+  });
   const updateDashboardCart = async () => {
     const response = await fetch(location.pathname, {credentials: 'same-origin', headers: {'X-Requested-With': 'fetch'}});
     if (!response.ok || response.redirected) throw new Error('Cart refresh failed');
@@ -313,14 +345,14 @@ if (customerDashboard) {
     replaceDashboardSection(page, '.customer-right-rail .cart-panel');
     replaceDashboardSection(page, '.customer-topbar .customer-cart-link');
   };
-  const submitSearch = () => {
+  const submitSearch = (background=false) => {
     const form = document.querySelector('.customer-search');
     if (!form) return;
     const url = new URL(form.action, location.origin);
     const query = form.querySelector('[name=q]')?.value.trim() || '';
     if (query) url.searchParams.set('q', query);
     else url.searchParams.delete('q');
-    updateDashboard(url).catch(() => {});
+    updateDashboard(url,background===true).catch(() => {});
   };
   document.addEventListener('submit', (event) => {
     const form = event.target;
@@ -353,6 +385,13 @@ if (customerDashboard) {
     clearTimeout(searchTimer);
     submitSearch();
   });
+  window.addEventListener('focus', submitSearch);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) submitSearch();
+  });
+  setInterval(() => {
+    if (!document.hidden) submitSearch(true);
+  }, 5000);
 }
 
 
@@ -543,6 +582,7 @@ async function saveSelectedAddress(detail) {
   formData.set('latitude', detail.latitude);
   formData.set('longitude', detail.longitude);
   formData.set('address', detail.address);
+  formData.set('country',detail.country || '');
   try {
     const response = await fetch(customerLocationForm.action, {
       method: 'POST',
@@ -552,6 +592,7 @@ async function saveSelectedAddress(detail) {
     });
     if (!response.ok) throw new Error('Address update failed');
     window.dashvantiManualAddress = true;
+    document.dispatchEvent(new Event('dashvanti:delivery-location-changed'));
     const locationText = document.querySelector('[data-customer-location-text]');
     const locationStatus = document.querySelector('[data-customer-location-status]');
     const headerAddress = document.querySelector('[data-customer-header-address]');
@@ -601,8 +642,13 @@ let customerSearchAbort;
 let customerSearchRequest = 0;
 let customerSearchActive = -1;
 function closeCustomerSuggestions() {
+  clearTimeout(customerSearchTimer);
+  customerSearchAbort?.abort();
+  customerSearchRequest++;
   if (!customerSearchPanel) return;
   customerSearchPanel.hidden = true;
+  customerSearchInput?.setAttribute("aria-expanded", "false");
+  customerSearchInput?.removeAttribute("aria-activedescendant");
   customerSearchPanel.replaceChildren();
   customerSearchActive = -1;
 }
@@ -615,9 +661,10 @@ function selectCustomerSuggestion(button) {
   if (!button || !customerSearchInput) return;
   customerSearchInput.value = button.dataset.searchValue;
   closeCustomerSuggestions();
-  customerSearchInput.form?.requestSubmit();
+  window.location.assign(button.href);
 }
 async function loadCustomerSuggestions() {
+  clearTimeout(customerSearchTimer);
   const query = customerSearchInput?.value.trim() || '';
   const request = ++customerSearchRequest;
   customerSearchAbort?.abort();
@@ -635,13 +682,16 @@ async function loadCustomerSuggestions() {
     if (!response.ok || response.redirected) throw new Error('Search unavailable');
     const data = await response.json();
     if (request !== customerSearchRequest) return;
-    customerSearchPanel.replaceChildren(...data.items.map((item) => {
-      const button = document.createElement('button');
+    customerSearchPanel.replaceChildren(...data.items.map((item, index) => {
+      const button = document.createElement('a');
       const icon = document.createElement('span');
       const copy = document.createElement('span');
       const label = document.createElement('strong');
       const subtitle = document.createElement('small');
-      button.type = 'button';
+      button.href = item.restaurant_id
+        ? '/customer/restaurant/' + item.restaurant_id
+        : '/customer/restaurants?q=' + encodeURIComponent(item.value);
+      button.id = 'customer-suggestion-' + request + '-' + index;
       button.className = 'customer-search-suggestion';
       button.dataset.searchValue = item.value;
       button.setAttribute('role', 'option');
@@ -650,20 +700,25 @@ async function loadCustomerSuggestions() {
       subtitle.textContent = item.subtitle;
       copy.append(label, subtitle);
       button.append(icon, copy);
-      button.addEventListener('click', () => selectCustomerSuggestion(button));
+      button.addEventListener('click', (event) => {
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        selectCustomerSuggestion(button);
+      });
       return button;
     }));
     customerSearchPanel.hidden = !data.items.length;
+    customerSearchInput.setAttribute("aria-expanded", String(!!data.items.length));
+    customerSearchInput.removeAttribute("aria-activedescendant");
     customerSearchActive = -1;
-    submitCustomerSearchNow();
   } catch (error) {
     if (error.name !== 'AbortError' && request === customerSearchRequest) closeCustomerSuggestions();
   }
 }
 if (customerSearchInput && customerSearchPanel) {
   customerSearchInput.addEventListener('input', () => {
-    loadCustomerSuggestions();
-    submitCustomerSearchNow();
+    closeCustomerSuggestions();
+    customerSearchTimer = setTimeout(loadCustomerSuggestions, 150);
   });
   customerSearchInput.addEventListener('focus', () => {
     if (customerSearchInput.value.trim()) loadCustomerSuggestions();
@@ -684,8 +739,12 @@ if (customerSearchInput && customerSearchPanel) {
       event.preventDefault();
       customerSearchActive = event.key === 'ArrowDown'
         ? (customerSearchActive + 1) % options.length
-        : (customerSearchActive - 1 + options.length) % options.length;
-      options.forEach((option, index) => option.classList.toggle('active', index === customerSearchActive));
+        : (customerSearchActive < 0 ? options.length - 1 : (customerSearchActive - 1 + options.length) % options.length);
+      options.forEach((option, index) => {
+        option.classList.toggle('active', index === customerSearchActive);
+        option.setAttribute('aria-selected', String(index === customerSearchActive));
+      });
+      customerSearchInput.setAttribute('aria-activedescendant', options[customerSearchActive].id);
       options[customerSearchActive].scrollIntoView({block: 'nearest'});
     }
   });
@@ -711,7 +770,7 @@ if (checkoutPage && checkoutForm) {
   const submitButton = checkoutForm.querySelector('[data-checkout-submit]');
   let quoteRequest = 0;
 
-  const checkoutMoney = (value) => '$' + Number(value || 0).toFixed(2);
+  const checkoutMoney = (value) => (checkoutForm.dataset.currency === 'INR' ? '₹' : '$') + Number(value || 0).toFixed(2);
   const checkoutCsrf = () => checkoutForm.querySelector('[name="csrfmiddlewaretoken"]')?.value || '';
   const selectedDeliveryAddress = () => addressSelect?.selectedOptions?.[0]?.dataset.address || '';
 
@@ -892,3 +951,62 @@ if (checkoutPage && checkoutForm) {
     if (link && !link.closest('[data-fund-group]')) fundGroup.classList.remove('active');
   });
 })();
+
+
+// Global Form Submit Interceptor: Prevents "The information about to submit is not secure" HTTP warning popups
+document.addEventListener('submit', async (e) => {
+  const form = e.target;
+  if (e.defaultPrevented || !form || (form.getAttribute('method') || 'get').toLowerCase() !== 'post' || form.dataset.noAjax === 'true') return;
+  if(form.dataset.submitting==='true'){e.preventDefault();return;}
+  e.preventDefault(); // Stop standard unencrypted POST form navigation
+  form.dataset.submitting='true';
+
+  const action = form.getAttribute('action') || location.href;
+  const formData = new FormData(form);
+  const submitter=e.submitter;
+  if(submitter?.name)formData.set(submitter.name,submitter.value);
+  if(submitter)submitter.disabled=true;
+  if(action.endsWith('/customer/register') && window.dashvantiSignupLocation)await window.dashvantiSignupLocation(formData);
+
+  try {
+    const res = await fetch(action, {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    });
+    if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+      const result = await res.json();
+      if(result.live_order_update){
+        setTimeout(()=>window.dispatchEvent(new CustomEvent('dashvanti:order-action',{detail:result})),0);
+        return;
+      }
+      if (result.redirect_url) {
+        location.assign(result.redirect_url);
+        return;
+      }
+    }
+    const redirectUrl = res.url;
+    if (res.ok || res.redirected) {
+      if(redirectUrl && !redirectUrl.includes('/login') && !redirectUrl.endsWith('/accept') && !redirectUrl.endsWith('/reject')) {
+        location.href = redirectUrl;
+      } else {
+        location.reload();
+      }
+    } else {
+      const page=new DOMParser().parseFromString(await res.text(),'text/html');
+      let error=form.querySelector('[data-form-error]');
+      if(!error){error=document.createElement('p');error.dataset.formError='true';error.setAttribute('role','alert');form.append(error);}
+      error.textContent=(page.querySelector('main')?.textContent || 'Unable to update. Please check the order and try again.').trim().slice(0,400);
+    }
+  } catch (err) {
+    let error=form.querySelector('[data-form-error]');
+    if(!error){error=document.createElement('p');error.dataset.formError='true';error.setAttribute('role','alert');form.append(error);}
+    error.textContent='Could not confirm the update. Refresh the order to check its status before retrying.';
+  } finally {
+    delete form.dataset.submitting;
+    if(submitter)submitter.disabled=false;
+  }
+});

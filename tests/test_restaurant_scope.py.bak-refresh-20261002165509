@@ -1,0 +1,62 @@
+import math
+import unittest
+from unittest.mock import patch
+from uuid import uuid4
+from backend.models import User,Restaurant,CustomerLocation
+from backend.services.auth_service import passwords
+import test_admin_portal as fixtures
+
+class RestaurantScopeTest(unittest.TestCase):
+    setUp=fixtures.AdminPortalTest.setUp
+    tearDown=fixtures.AdminPortalTest.tearDown
+
+    def prepare(self,country='IN'):
+        user=self.db.get(User,self.people['customer']);user.country=country
+        self.db.add(CustomerLocation(customer_id=user.id,latitude=0,longitude=0,country='IN'))
+        user.password=passwords.hash('ScopePassword1');self.db.commit()
+        with patch('backend.services.auth_service.emit'):
+            response=self.client.post('/api/auth/login',json={'email':user.email,'password':'ScopePassword1','role':'customer'})
+        self.auth={'Authorization':'Bearer '+response.json()['access_token']}
+
+    def restaurant(self,country,miles,located=True):
+        user=User(email=uuid4().hex+'@example.com',name='Scope '+uuid4().hex,role='restaurant',password='unused')
+        self.db.add(user);self.db.flush()
+        row=Restaurant(id=user.id,name=user.name,cuisine='ScopeCuisine'+country,kind='both',address='',country=country,
+                       latitude=0 if located else None,longitude=math.degrees(miles*1609.344/6371000) if located else None)
+        self.db.add(row);self.db.commit();return row
+
+    def test_country_radius_boundary_pagination_and_suggestions(self):
+        self.prepare()
+        near=self.restaurant('IN',1);edge=self.restaurant('IN',9.999999);outside=self.restaurant('IN',10.00001)
+        foreign=self.restaurant('US',1);missing=self.restaurant('IN',1,False)
+        response=self.client.get('/api/restaurants?q=Scope',headers=self.auth)
+        self.assertEqual(response.status_code,200,response.text)
+        data=response.json();self.assertEqual({r['id'] for r in data['items']},{near.id,edge.id})
+        self.assertEqual(data['meta']['total'],2);self.assertEqual(data['meta']['radius_miles'],10)
+        page=self.client.get('/api/restaurants?q=Scope&page_size=1&page=2',headers=self.auth).json()
+        self.assertEqual(len(page['items']),1);self.assertEqual(page['meta']['total'],2)
+        suggestions=self.client.get('/api/restaurants/suggestions?q=Scope',headers=self.auth).json()['items']
+        self.assertTrue(any(r.get('restaurant_id')==near.id for r in suggestions))
+        self.assertFalse(any(r.get('restaurant_id') in {outside.id,foreign.id,missing.id} for r in suggestions))
+        self.assertFalse(any(r['label']=='ScopeCuisineUS' for r in suggestions))
+
+    def test_missing_location_country_and_profile_country_precedence(self):
+        self.prepare('US');near=self.restaurant('US',1);self.restaurant('IN',1)
+        data=self.client.get('/api/restaurants?q=Scope',headers=self.auth).json()
+        self.assertEqual([r['id'] for r in data['items']],[near.id])
+        self.db.delete(self.db.get(CustomerLocation,self.people['customer']));self.db.commit()
+        data=self.client.get('/api/restaurants?q=Scope',headers=self.auth).json()
+        self.assertEqual(data['items'],[]);self.assertTrue(data['meta']['location_required'])
+
+    def test_admin_persists_country_coordinates_and_address_change_clears_old_point(self):
+        self.prepare();rid=self.people['restaurant']
+        with patch('backend.services.restaurant_location_service.geocode',return_value=None):
+            response=self.client.put(f'/api/operations/admin/users/{rid}',headers=self.headers,json={'country':'India','latitude':19,'longitude':73,'address':'Exact address'})
+            self.assertEqual(response.status_code,200,response.text)
+            row=self.db.get(Restaurant,rid);self.assertEqual((row.country,row.latitude,row.longitude),('IN',19,73))
+            response=self.client.put(f'/api/operations/admin/users/{rid}',headers=self.headers,json={'country':'India','latitude':19,'longitude':73,'address':'Different address'})
+            self.assertEqual(response.status_code,200,response.text);self.assertIsNone(row.latitude)
+            response=self.client.put(f'/api/operations/admin/users/{rid}',headers=self.headers,json={'latitude':91,'longitude':73})
+            self.assertEqual(response.status_code,422)
+
+if __name__=='__main__':unittest.main()

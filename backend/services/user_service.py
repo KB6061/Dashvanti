@@ -4,6 +4,13 @@ from backend.models import Address, Customer, CustomerLocation, User
 
 def update_profile(db, user, data):
     values = data.model_dump()
+    country = values.pop('country', None)
+    if country:
+        from backend.services.geo_service import normalize_country
+        normalized = normalize_country(country)
+        if country and not normalized:
+            raise HTTPException(400, 'Use India or a two-letter country code')
+        user.country = normalized
     email = values.pop('email', None)
     if email:
         email = str(email).lower()
@@ -53,6 +60,14 @@ def current_location(db, user):
 
 def save_current_location(db, user, data):
     location = db.get(CustomerLocation, user.id)
+    detected=False
+    if data.address is None and (location is None or not location.address):
+        from backend.services.restaurant_location_service import geocode
+        found=geocode(latlng=f'{data.latitude},{data.longitude}') or {}
+        address=('Near '+found['address'])[:500] if found.get('address') else f'{data.latitude:.5f}, {data.longitude:.5f}'
+        data=data.model_copy(update={'address':address,'country':found.get('country') or data.country})
+        detected=True
+    unchanged = location is not None and location.latitude == data.latitude and location.longitude == data.longitude
     if not location:
         location = CustomerLocation(
             customer_id=user.id,
@@ -66,8 +81,16 @@ def save_current_location(db, user, data):
         location.longitude = data.longitude
         if data.address is not None:
             location.address = data.address.strip() or None
+    from backend.services.geo_service import normalize_country
+    country=normalize_country(data.country)
+    if country or not unchanged:
+        location.country=country
+    if country and not user.country:user.country=country
+    if detected and not db.scalar(select(Address.id).where(Address.customer_id==user.id)):
+        db.add(Address(customer_id=user.id,label='Current location',details=data.address,is_default=True))
     db.flush()
     return {
+        'country': location.country,
         'latitude': location.latitude,
         'longitude': location.longitude,
         'address': location.address,

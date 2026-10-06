@@ -1,0 +1,3 @@
+Car icon adapted from OpenMoji by HfG Schwabisch Gmund. CC BY-SA 4.0. Changes: white body, navy windows and outline, cropped viewBox.
+Source: https://github.com/hfg-gmuend/openmoji/blob/master/color/svg/1F697.svg
+License: https://creativecommons.org/licenses/by-sa/4.0/

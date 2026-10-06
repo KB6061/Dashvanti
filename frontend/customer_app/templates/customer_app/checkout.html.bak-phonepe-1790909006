@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="checkout-page" data-checkout-page data-checkout-mode="{{ checkout_mode }}" data-pickup-name="{{ cart.groups.0.restaurant_name }}" data-pickup-address="{{ cart.groups.0.restaurant_address }}">
+  <header class="checkout-page-head">
+    <a href="/customer/cart" aria-label="Back to cart">←</a>
+    <div><p class="eyebrow">SECURE CHECKOUT</p><h1>Checkout</h1></div>
+  </header>
+
+  <p class="checkout-cancellation-policy">Cancellation is free before preparation starts. Once preparation begins, the cancellation charge is {{ cancellation_policy.preparation_percent }}% of discounted food value. After pickup, contact support. Restaurant cancellations receive a full refund.</p>
+  {% if cart.items %}
+  <form method="post" class="checkout-form" data-checkout-form data-quote-url="/customer/checkout/quote">
+    {% csrf_token %}
+    {{ form.request_key }}
+    {{ form.mode.as_hidden }}
+    {% if form.non_field_errors %}<div class="checkout-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+
+    <div class="checkout-layout">
+      <div class="checkout-sections">
+        <section class="checkout-card checkout-destination">
+          <header>
+            <h2 data-checkout-destination-title>{% if checkout_mode == 'pickup' %}Pickup from{% else %}Deliver to{% endif %}</h2>
+            <button type="button" data-checkout-mode-toggle data-mode="{% if checkout_mode == 'delivery' %}pickup{% else %}delivery{% endif %}">{% if checkout_mode == 'delivery' %}Pickup instead{% else %}Delivery instead{% endif %}</button>
+          </header>
+
+          <div class="checkout-map-wrap">
+            {{ checkout_restaurant_markers|json_script:"checkout-restaurant-markers" }}
+            <div id="customer-checkout-map" class="dashvanti-google-map checkout-google-map" data-google-map data-map-markers-id="checkout-restaurant-markers" data-map-show-name="true" data-map-current-location="false" aria-label="Restaurant locations"></div>
+            <p class="map-load-status" data-map-status>Loading restaurant location…</p>
+            <small>Restaurant location{% if cart.groups|length > 1 %}s{% endif %}</small>
+            {% for group in cart.groups %}<p><strong>{{ group.restaurant_name }}</strong> · {{ group.restaurant_address|default:'Restaurant address unavailable' }}</p>{% endfor %}
+
+          </div>
+
+          <div data-checkout-delivery-panel {% if checkout_mode == 'pickup' %}hidden{% endif %}>
+            <label class="checkout-address-field" for="id_address_id">
+              <span>Delivery address</span>
+              <select name="address_id" id="id_address_id" data-checkout-address>
+                <option value="">Choose delivery address</option>
+                {% for address in addresses %}
+                <option value="{{ address.id }}" data-address="{{ address.details }}" {% if address.id == selected_address_id %}selected{% endif %}>{{ address.label }} — {{ address.details }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <a class="checkout-address-manage" href="/customer/addresses">Manage addresses</a>
+            {{ form.address_id.errors }}
+          </div>
+
+          <div class="checkout-pickup-location" data-checkout-pickup-panel {% if checkout_mode == 'delivery' %}hidden{% endif %}>
+            <span class="checkout-location-icon" aria-hidden="true">R</span>
+            <span><strong>{{ cart.groups.0.restaurant_name }}</strong><small>{{ cart.groups.0.restaurant_address|default:'Restaurant address pending' }}</small></span>
+          </div>
+          <p class="checkout-live-status" data-checkout-status role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="checkout-card">
+          <h2 data-time-title>{% if checkout_mode == 'pickup' %}Pickup time{% else %}Delivery time{% endif %}</h2>
+          <div class="checkout-time-option">
+            <span><strong>Standard</strong><small data-checkout-eta aria-live="polite">Choose a delivery address for an estimate</small></span>
+            <span class="checkout-selected-radio" aria-label="Selected"></span>
+          </div>
+        </section>
+
+        <section class="checkout-card checkout-cart-summary">
+          <h2>Cart summary</h2>
+          {% for group in cart.groups %}
+          <details {% if cart.groups|length == 1 %}open{% endif %}>
+            <summary>
+              <span><strong>{{ group.restaurant_name }}</strong><small>{{ group.item_count }} item{{ group.item_count|pluralize }}</small></span>
+              <span aria-hidden="true">⌄</span>
+            </summary>
+            <div class="checkout-item-list">
+              {% for item in group.items %}
+              <div><span>{{ item.quantity }} × {{ item.name }}</span><strong>&#36;{{ item.subtotal }}</strong></div>
+              {% endfor %}
+            </div>
+          </details>
+          {% endfor %}
+        </section>
+
+        <section class="checkout-card checkout-promo">
+          <header><h2>Save more</h2><span>Promotion code</span></header>
+          <div>
+            <input type="text" name="promo_code" maxlength="40" value="{{ form.promo_code.value|default:'' }}" placeholder="Enter promotion code" data-checkout-promo>
+            <button type="button" data-checkout-promo-apply>Apply</button>
+          </div>
+          {{ form.promo_code.errors }}
+          <p data-checkout-quote-status aria-live="polite"></p>
+        </section>
+
+        <section class="checkout-card checkout-payment">
+          <h2>Payment</h2>
+          <div><span class="checkout-payment-mark" aria-hidden="true">&#36;</span><span><strong data-checkout-payment-label>Cash on {% if checkout_mode == 'pickup' %}pickup{% else %}delivery{% endif %}</strong><small>Pay when your order is received</small></span><span class="checkout-selected-radio" aria-label="Selected"></span></div>
+        </section>
+      </div>
+
+      <aside class="checkout-order-summary">
+        <header>
+          <span class="checkout-restaurant-mark" aria-hidden="true">{{ cart.groups.0.restaurant_name|first }}</span>
+          <div>
+            <p>{% if cart.groups|length == 1 %}Your cart from{% else %}Your order from{% endif %}</p>
+            <h2>{% if cart.groups|length == 1 %}{{ cart.groups.0.restaurant_name }}{% else %}{{ cart.groups|length }} restaurants{% endif %}</h2>
+          </div>
+        </header>
+        {% if cart.groups|length > 1 %}
+        <ul class="checkout-restaurant-list">{% for group in cart.groups %}<li>{{ group.restaurant_name }} · {{ group.item_count }} item{{ group.item_count|pluralize }}</li>{% endfor %}</ul>
+        {% endif %}
+        <div class="checkout-price-list">
+          <span>Subtotal</span><strong data-checkout-subtotal>&#36;{{ quote.subtotal }}</strong>
+          <span>Estimated tax</span><strong data-checkout-tax>&#36;{{ quote.tax }}</strong>
+          <span>Service fee</span><strong data-checkout-service-fee>&#36;{{ quote.service_fee }}</strong>
+          <span>Delivery fee</span><strong data-checkout-delivery-fee>&#36;{{ quote.delivery_fee }}</strong>
+          <span>Discount</span><strong data-checkout-discount>−&#36;{{ quote.discount }}</strong>
+        </div>
+        <section class="checkout-tip" data-tip-panel>
+<h2>Delivery Partner Tip</h2><p>Your single tip makes happy on face :)</p>
+<div class="tip-options" role="group" aria-label="Choose a tip">
+<button type="button" data-tip-value="0" aria-pressed="true">No tip</button>
+<button type="button" data-tip-value="1.50" aria-pressed="false">&#36;1.50</button>
+<button type="button" data-tip-value="2.00" aria-pressed="false">&#36;2.00</button>
+<button type="button" data-tip-value="2.50" aria-pressed="false">&#36;2.50</button>
+<button type="button" data-tip-other aria-pressed="false">Other</button></div>
+<label data-tip-custom hidden>Custom tip (USD)<input type="number" name="tip" value="0" min="0" max="1000" step=".01" data-tip-input></label>
+</section>
+<div class="checkout-price-list"><span>Tip</span><strong data-checkout-tip>&#36;0.00</strong></div>
+        <div class="checkout-total"><span>Total</span><strong data-checkout-total>&#36;{{ quote.total }}</strong></div>
+        <button type="submit" class="checkout-place-order" data-checkout-submit>Place order <span data-checkout-button-total>&#36;{{ quote.total }}</span></button>
+      </aside>
+    </div>
+  </form>
+  {% else %}
+  <section class="checkout-empty"><h2>Your cart is empty</h2><p>Add a menu item before checkout.</p><a href="/customer/restaurants">Browse restaurants</a></section>
+  {% endif %}
+</section>
+{% endblock %}

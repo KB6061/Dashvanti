@@ -5,6 +5,9 @@ class LoginForm(forms.Form):
     password = forms.CharField(widget=forms.PasswordInput)
 
 class RegisterForm(LoginForm):
+    latitude = forms.FloatField(min_value=-90,max_value=90,required=False,widget=forms.HiddenInput)
+    longitude = forms.FloatField(min_value=-180,max_value=180,required=False,widget=forms.HiddenInput)
+    email = forms.EmailField(label="Email", max_length=254)
     name = forms.CharField(max_length=120)
     phone = forms.CharField(max_length=30, required=False)
     password = forms.CharField(min_length=5,widget=forms.PasswordInput)
@@ -17,6 +20,7 @@ class ResetForm(forms.Form):
     password = forms.CharField(min_length=5,widget=forms.PasswordInput)
 
 class ProfileForm(forms.Form):
+    country = forms.CharField(max_length=60, required=False, help_text='India or a two-letter country code (US, IN, etc.)')
     email = forms.EmailField(required=False)
     name = forms.CharField(max_length=120)
     phone = forms.CharField(max_length=30,required=False)

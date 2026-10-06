@@ -16,10 +16,14 @@ SESSION_ENGINE = 'django.contrib.sessions.backends.file'
 SESSION_FILE_PATH = os.environ.get('SESSION_FILE_PATH',str(BASE_DIR.parent/'run'/'sessions'))
 Path(SESSION_FILE_PATH).mkdir(parents=True, exist_ok=True, mode=0o700)
 PORTAL_ROLE = os.environ.get('PORTAL_ROLE','')
+if PORTAL_ROLE in {'customer', 'main'}:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin-allow-popups'
+    SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 SESSION_COOKIE_NAME = f'dashvanti_{PORTAL_ROLE or "main"}_sessionid'
 CSRF_COOKIE_NAME = f'dashvanti_{PORTAL_ROLE or "main"}_csrftoken'
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = os.environ.get('COOKIE_SECURE','true').lower() == 'true'
+SESSION_COOKIE_SECURE = PORTAL_ROLE in {'customer', 'main'} or os.environ.get('COOKIE_SECURE','true').lower() == 'true'
 CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_AGE = int(os.environ.get('SESSION_COOKIE_AGE','34560000'))
@@ -31,6 +35,7 @@ STATIC_ROOT = BASE_DIR/'staticfiles'
 STATICFILES_DIRS = [BASE_DIR/'static', BASE_DIR/'logo']
 API_URL = os.environ.get('API_URL','http://api:8001') + '/api'
 DJANGO_ACTIVITY_LOG = os.environ.get('DJANGO_ACTIVITY_LOG', str(BASE_DIR.parent/'logs'/'ui-activity.log'))
+DJANGO_TRACKING_LOG = os.environ.get('DJANGO_TRACKING_LOG', str(BASE_DIR.parent/'logs'/'live-tracking.log'))
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD','krishna')
 GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY','')
 PORTAL_URLS = {

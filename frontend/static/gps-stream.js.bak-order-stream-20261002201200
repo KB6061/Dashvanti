@@ -1,0 +1,50 @@
+(() => {
+ const role=document.body.classList.contains('admin-portal')?'admin':document.body.classList.contains('driver-portal')?'driver':document.body.classList.contains('restaurant-portal')?'restaurant':'customer';
+ if(!document.querySelector('.portal-logout-button,[data-order-alerts]') && role!=='admin')return;
+ if(role==='admin' && !document.querySelector('.portal-logout-button,form[action="/admin/logout"],[data-map-online-drivers]'))return;
+ let disposed=false;
+ const channels=new Set();
+ class Channel{
+  constructor(orderId=null){this.orderId=orderId;this.delay=1000;this.ready=false;this.connecting=false;this.socket=null;channels.add(this);void this.connect();}
+  async connect(){
+   if(disposed || this.connecting)return;this.connecting=true;
+   try{
+    const csrf=document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+    const res=await fetch('/'+role+'/gps-ticket'+(this.orderId?'?order_id='+this.orderId:''),{method:'POST',credentials:'same-origin',headers:{'X-CSRFToken':csrf||''},signal:AbortSignal.timeout(10000)});
+    if(res.status===401 || res.status===403 || res.status===409){this.stopped=true;return;}
+    if(!res.ok)throw Error('GPS stream unavailable');
+    const data=await res.json();
+    const path=this.orderId?'/ws/customer/'+this.orderId:role==='admin'?'/ws/admin':'/ws/driver/'+data.driver_id;
+    const socket=new WebSocket((location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+path);this.socket=socket;
+    socket.onopen=()=>socket.send(JSON.stringify({ticket:data.ticket}));
+    socket.onmessage=event=>{
+     const data=JSON.parse(event.data);
+     if(data.type==='ready'){this.ready=true;this.delay=1000;window.dispatchEvent(new CustomEvent('dashvanti:gps-connected',{detail:{orderId:this.orderId}}));if(this.latest)this.send(this.latest);return;}
+     if(data.type==='ping'){socket.send(JSON.stringify({type:'pong'}));return;}
+     if(data.type==='ack'){window.dispatchEvent(new CustomEvent('dashvanti:gps-status',{detail:{status:'live'}}));return;}
+     if(data.type==='error'){window.dispatchEvent(new CustomEvent('dashvanti:gps-status',{detail:{status:data.detail}}));return;}
+     if(data.type==='driver_location' || data.type==='driver_offline'){
+      if(data.timestamp && data.timestamp<=(this.lastTimestamp?.[data.driver_id]||0))return;
+      this.lastTimestamp=this.lastTimestamp||{};this.lastTimestamp[data.driver_id]=data.timestamp||0;
+      window.dispatchEvent(new CustomEvent('dashvanti:gps-stream',{detail:{...data,updated_at:data.timestamp?new Date(data.timestamp).toISOString():null}}));
+     }
+    };
+    socket.onclose=()=>{this.ready=false;this.schedule();};socket.onerror=()=>socket.close();
+    this.expiry=setTimeout(()=>socket.close(),Math.max(1000,(data.expires_in-30)*1000));
+   }catch(_){this.schedule();}finally{this.connecting=false;}
+  }
+  schedule(){clearTimeout(this.expiry);clearTimeout(this.retry);if(disposed||this.stopped)return;this.retry=setTimeout(()=>this.connect(),this.delay+Math.random()*500);this.delay=Math.min(30000,this.delay*2);}
+  send(value){this.latest=value;if(!this.ready || this.socket?.readyState!==WebSocket.OPEN)return false;if(Date.now()-(this.lastSent||0)<3800)return false;this.lastSent=Date.now();this.socket.send(JSON.stringify(value));return true;}
+  close(){this.stopped=true;clearTimeout(this.retry);clearTimeout(this.expiry);this.socket?.close();channels.delete(this);}
+ }
+ let driver;
+ window.dashvantiGPS={send(value){driver=driver||new Channel();return driver.send(value);}};
+ function viewers(){if(role!=='driver'){
+  if(role==='admin')new Channel();
+  else document.querySelectorAll('[data-live-tracking]:not([hidden])').forEach(host=>new Channel(Number(host.dataset.orderId)));
+ }}
+ viewers();
+ window.addEventListener('online',()=>channels.forEach(channel=>{if(!channel.ready)void channel.connect();}));
+ window.addEventListener('pagehide',()=>{disposed=true;channels.forEach(channel=>channel.close());});
+ window.addEventListener('pageshow',event=>{if(event.persisted){disposed=false;driver=null;viewers();}});
+})();

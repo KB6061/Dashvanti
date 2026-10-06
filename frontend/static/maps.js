@@ -1,4 +1,4 @@
-window.dashvantiSilverCarIcon=()=>({url:'data:image/svg+xml;charset=UTF-8,'+encodeURIComponent("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"80\" viewBox=\"0 0 64 80\"><defs><linearGradient id=\"s\" x2=\"0\" y2=\"1\"><stop stop-color=\"#fff\"/><stop offset=\".3\" stop-color=\"#dce1e5\"/><stop offset=\".55\" stop-color=\"#fff\"/><stop offset=\"1\" stop-color=\"#727c85\"/></linearGradient><linearGradient id=\"g\" x2=\"0\" y2=\"1\"><stop stop-color=\"#56606a\"/><stop offset=\"1\" stop-color=\"#10151a\"/></linearGradient><radialGradient id=\"h\"><stop stop-opacity=\".4\"/><stop offset=\"1\" stop-opacity=\"0\"/></radialGradient></defs><path d=\"M32 2a12 12 0 0 0-12 12c0 9 12 24 12 24s12-15 12-24A12 12 0 0 0 32 2Z\" fill=\"#e53935\" stroke=\"#fff\" stroke-width=\"1.5\"/><circle cx=\"32\" cy=\"14\" r=\"4\" fill=\"#fff\"/><ellipse cx=\"32\" cy=\"66\" rx=\"31\" ry=\"12\" fill=\"url(#h)\"/><g fill=\"#171b20\"><rect x=\"13\" y=\"46\" width=\"11\" height=\"7\" rx=\"2\"/><rect x=\"40\" y=\"46\" width=\"11\" height=\"7\" rx=\"2\"/><rect x=\"13\" y=\"69\" width=\"11\" height=\"7\" rx=\"2\"/><rect x=\"40\" y=\"69\" width=\"11\" height=\"7\" rx=\"2\"/></g><path d=\"M8 51Q32 45 56 51Q62 54 62 61Q62 69 56 71Q32 76 8 71Q2 69 2 61Q2 54 8 51Z\" fill=\"url(#s)\" stroke=\"#6d767e\"/><path d=\"M22 52L17 55V67L22 70L26 65V57Z M42 52L48 55V67L42 70L38 65V57Z\" fill=\"url(#g)\"/><path d=\"M26 54H37L39 57V65L37 69H26L24 65V57Z\" fill=\"url(#s)\" stroke=\"#a3abb2\"/><path d=\"M23 50H40M23 72H40\" stroke=\"#fff\" stroke-width=\"2\"/><path d=\"M6 54V59M6 64V68\" stroke=\"#fffbdc\" stroke-width=\"3\"/><path d=\"M58 54V58M58 65V69\" stroke=\"#bd2828\" stroke-width=\"2\"/><path d=\"M29 49V46M35 73V76\" stroke=\"#adb5bd\" stroke-width=\"3\"/></svg>"),scaledSize:new google.maps.Size(48,60),anchor:new google.maps.Point(24,46)});
+window.dashvantiCarPinIcon=(heading=0)=>window.dashvantiNavigationIcon(heading,'car'); window.dashvantiSilverCarIcon=window.dashvantiCarPinIcon;
 (() => {
   const mapElements = [...document.querySelectorAll('[data-google-map]')];
   if (!mapElements.length && !document.querySelector('[data-address-autocomplete]')) return;
@@ -31,7 +31,7 @@ window.dashvantiSilverCarIcon=()=>({url:'data:image/svg+xml;charset=UTF-8,'+enco
     document.head.appendChild(script);
   });
 
-  const states = new WeakMap();
+  const states = new Map();
   const geocodeCache = new Map();
   const geocodeAddress = (geocoder, address) => {
     const normalized = address.trim().toLowerCase();
@@ -72,8 +72,8 @@ window.dashvantiSilverCarIcon=()=>({url:'data:image/svg+xml;charset=UTF-8,'+enco
       map: state.map,
       position,
       title: item.name || item.address || 'Location',
-      icon: item.type === 'driver' ? (document.querySelector('[data-order-alerts]')?.dataset.orderAlerts!=='driver' ? window.dashvantiSilverCarIcon() : {url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"80\" viewBox=\"0 0 64 80\"><defs><linearGradient id=\"body\"><stop stop-color=\"#730d16\"/><stop offset=\".22\" stop-color=\"#ff6570\"/><stop offset=\".48\" stop-color=\"#ffb0b5\"/><stop offset=\".73\" stop-color=\"#c81e32\"/><stop offset=\"1\" stop-color=\"#680b17\"/></linearGradient><linearGradient id=\"glass\" x2=\".6\" y2=\"1\"><stop stop-color=\"#9ed8f0\"/><stop offset=\".4\" stop-color=\"#29495f\"/><stop offset=\"1\" stop-color=\"#101e30\"/></linearGradient><radialGradient id=\"shadow\"><stop stop-opacity=\".5\"/><stop offset=\"1\" stop-opacity=\"0\"/></radialGradient></defs><ellipse cx=\"34\" cy=\"43\" rx=\"27\" ry=\"37\" fill=\"url(#shadow)\"/><g fill=\"#151b24\"><rect x=\"12\" y=\"17\" width=\"8\" height=\"15\" rx=\"3\"/><rect x=\"44\" y=\"17\" width=\"8\" height=\"15\" rx=\"3\"/><rect x=\"12\" y=\"51\" width=\"8\" height=\"16\" rx=\"3\"/><rect x=\"44\" y=\"51\" width=\"8\" height=\"16\" rx=\"3\"/></g><path d=\"M20 7Q32 2 44 7Q49 11 49 24L48 64Q47 73 40 75H24Q17 73 16 64L15 24Q15 11 20 7Z\" fill=\"url(#body)\" stroke=\"#344454\" stroke-width=\"1.2\"/><path d=\"M21 11Q32 7 43 11L44 23Q32 19 20 23Z\" fill=\"#ff7882\" opacity=\".75\"/><path d=\"M20 26Q32 21 44 26L41 39H23Z\" fill=\"url(#glass)\" stroke=\"#526475\"/><path d=\"M24 40H40L42 54H22Z\" fill=\"url(#body)\" stroke=\"#9e1725\"/><path d=\"M22 56H42L44 65Q32 69 20 65Z\" fill=\"url(#glass)\" stroke=\"#526475\"/><path d=\"M18 30L21 40V52L18 57ZM46 30L43 40V52L46 57Z\" fill=\"#243e51\"/><path d=\"M22 27L40 25L25 36Z\" fill=\"#fff\" opacity=\".23\"/><g fill=\"#c9d6e0\" stroke=\"#405365\"><path d=\"M16 29L10 31V35L16 34Z\"/><path d=\"M48 29L54 31V35L48 34Z\"/></g><path d=\"M19 12L25 10M39 10L45 12\" stroke=\"#fffde0\" stroke-width=\"3.5\" stroke-linecap=\"round\"/><path d=\"M19 68L25 70M39 70L45 68\" stroke=\"#e53838\" stroke-width=\"3\" stroke-linecap=\"round\"/><path d=\"M25 7H39M24 73H40\" stroke=\"#273747\" stroke-width=\"2\"/><path d=\"M18 39V51M46 39V51\" stroke=\"#fff\" stroke-opacity=\".75\"/></svg>"), scaledSize: new google.maps.Size(48,60), anchor: new google.maps.Point(24,30)}) : undefined,
-      label: item.type !== 'driver' && item.type && labels[item.type] ? {text: labels[item.type], color: '#ffffff', fontWeight: '800'} : undefined,
+        icon: item.type === 'driver' ? window.dashvantiNavigationIcon((item.heading || 0)-(state.map.getHeading?.() || 0)) : undefined,
+      label: !state.element.closest('[data-live-tracking]') && item.type !== 'driver' && item.type && labels[item.type] ? {text: labels[item.type], color: '#ffffff', fontWeight: '800'} : undefined,
     });
     if (state.element.dataset.mapShowName === 'true' && item.name) {
       new google.maps.Marker({
@@ -117,12 +117,14 @@ window.dashvantiSilverCarIcon=()=>({url:'data:image/svg+xml;charset=UTF-8,'+enco
     const target = {lat:Number(location.latitude), lng:Number(location.longitude)};
     let entry = state.markers.get('driver-self');
     if (!entry) {
-      addMarker(state, {id:'driver-self', type:'driver', name:'Your live location'}, target);
+      addMarker(state, {id:'driver-self', type:'driver', name:'Your live location', heading:location.heading || 0}, target);
       state.map.setCenter(target);
-      state.map.setZoom(16);
+      state.map.setZoom(18);
       return;
     }
     cancelAnimationFrame(state.driverFrame);
+    entry.item.heading=location.heading || 0;
+    entry.marker.setIcon(window.dashvantiNavigationIcon(entry.item.heading-(state.map.getHeading?.() || 0)));
     const previous = entry.marker.getPosition();
     const start = {lat:previous.lat(), lng:previous.lng()};
     const began = performance.now();
@@ -134,6 +136,54 @@ window.dashvantiSilverCarIcon=()=>({url:'data:image/svg+xml;charset=UTF-8,'+enco
     state.driverFrame=requestAnimationFrame(animate);
     if(!state.map.getBounds()?.contains(target))state.map.panTo(target);
   };
+  window.addEventListener('dashvanti:avatar-change',()=>{states.forEach(state=>state.markers.forEach(entry=>{if(entry.item.type==='driver')entry.marker.setIcon(window.dashvantiNavigationIcon((entry.item.heading||0)-(state.map.getHeading?.() || 0)));}));});
+  window.addEventListener('dashvanti:portal-live',event=>{
+    if(document.body.classList.contains('admin-portal') && Array.isArray(event.detail.drivers)){
+      states.forEach(state=>{
+        if(!state.element.hasAttribute('data-map-online-drivers'))return;
+        const drivers=event.detail.drivers,ids=new Set(drivers.map(driver=>'driver-'+driver.id));
+        state.markers.forEach((entry,id)=>{if(entry.item.type==='driver' && !ids.has(id)){entry.marker.setMap(null);state.markers.delete(id);}});
+        drivers.forEach(driver=>{
+          if(!window.dashvantiValidCoordinates(driver))return;
+          const id='driver-'+driver.id,position={lat:driver.latitude,lng:driver.longitude};
+          const entry=state.markers.get(id);
+          if(!entry){addMarker(state,{...driver,id,type:'driver'},position);return;}
+          entry.item={...driver,id,type:'driver'};entry.position=position;
+          entry.marker.setPosition(position);entry.marker.setIcon(window.dashvantiNavigationIcon((driver.heading || 0)-(state.map.getHeading?.() || 0),'car'));
+        });
+      });
+    }
+    if(!event.detail.navigation_active)return;
+    states.forEach(state=>state.markers.forEach(entry=>{
+      if(entry.item.type!=='driver')return;
+      const order=event.detail.orders.find(order=>String(entry.item.id)==='driver-'+order.driver_id);
+      if(order?.location){entry.marker.setPosition({lat:order.location.latitude,lng:order.location.longitude});entry.item.heading=order.location.heading;entry.marker.setIcon(window.dashvantiNavigationIcon((order.location.heading || 0)-(state.map.getHeading?.() || 0)));}
+    }));
+  });
+  window.addEventListener('dashvanti:gps-stream',event=>{
+    if(!document.body.classList.contains('admin-portal'))return;
+    const data=event.detail,id='driver-'+data.driver_id;
+    states.forEach(state=>{
+      if(!state.element.hasAttribute('data-map-online-drivers'))return;
+      const entry=state.markers.get(id);
+      if(data.type==='driver_offline'){
+        if(entry){entry.marker.setMap(null);state.markers.delete(id);}return;
+      }
+      if(!window.dashvantiValidCoordinates(data))return;
+      const position={lat:Number(data.latitude),lng:Number(data.longitude)};
+      if(!entry){addMarker(state,{...data,id,type:'driver',name:data.driver_name||'Driver'},position);return;}
+      entry.item={...entry.item,...data};entry.position=position;
+      cancelAnimationFrame(entry.frame);
+      const previous=entry.marker.getPosition(),start={lat:previous.lat(),lng:previous.lng()},began=performance.now();
+      const animate=now=>{
+        const fraction=Math.min(1,(now-began)/1000);
+        entry.marker.setPosition({lat:start.lat+(position.lat-start.lat)*fraction,lng:start.lng+(position.lng-start.lng)*fraction});
+        if(fraction<1)entry.frame=requestAnimationFrame(animate);
+      };
+      entry.frame=requestAnimationFrame(animate);
+      entry.marker.setIcon(window.dashvantiNavigationIcon((data.heading||0)-(state.map.getHeading?.()||0),'car'));
+    });
+  });
   window.addEventListener('dashvanti:driver-position', event => {
     document.querySelectorAll('[data-map-driver-location="true"]').forEach(element => {
       const state=states.get(element);
@@ -146,15 +196,21 @@ window.dashvantiSilverCarIcon=()=>({url:'data:image/svg+xml;charset=UTF-8,'+enco
     await mapsReady;
     const map = new google.maps.Map(element, {
       center: {lat: 39.5, lng: -98.35},
+      renderingType: element.closest('[data-live-tracking]') ? google.maps.RenderingType.VECTOR : google.maps.RenderingType.RASTER,
+      mapTypeId: google.maps.MapTypeId.ROADMAP,
+      headingInteractionEnabled: false,
+      tiltInteractionEnabled: false,
       zoom: 4,
       mapTypeControl: false,
       streetViewControl: false,
-      fullscreenControl: true,
+      fullscreenControl: !element.closest('[data-tracking-role=driver]'),
       gestureHandling: 'greedy',
     });
     const state = {element, map, geocoder: new google.maps.Geocoder(), info: new google.maps.InfoWindow(), bounds: new google.maps.LatLngBounds(), markers: new Map(), addresses: new Map()};
     states.set(element, state);
+    map.addListener('heading_changed',()=>state.markers.forEach(entry=>{if(entry.item.type==='driver')entry.marker.setIcon(window.dashvantiNavigationIcon((entry.item.heading || 0)-(map.getHeading?.() || 0)));}));
     element.dashvantiMapState = state;
+    document.dispatchEvent(new CustomEvent('dashvanti:map-ready',{detail:{element}}));
     map.addListener('idle', () => {
       const bounds = map.getBounds();
       if (!bounds) return;
@@ -250,6 +306,7 @@ window.dashvantiSilverCarIcon=()=>({url:'data:image/svg+xml;charset=UTF-8,'+enco
       address: result.formatted_address || result.formattedAddress || label,
       latitude: location.lat(),
       longitude: location.lng(),
+      country: (result.addressComponents || result.address_components || []).find(component=>component.types?.includes('country'))?.shortText || (result.address_components || []).find(component=>component.types?.includes('country'))?.short_name || null,
     }}));
   };
   let addressLookupVersion=0;
@@ -262,7 +319,7 @@ window.dashvantiSilverCarIcon=()=>({url:'data:image/svg+xml;charset=UTF-8,'+enco
       if(status==='OK'&&results?.[0]){emitAddress(results[0],address);return;}
       try {
         const {Place}=await google.maps.importLibrary('places');
-        const {places}=await Place.searchByText({textQuery:address,fields:['location','formattedAddress'],maxResultCount:1});
+        const {places}=await Place.searchByText({textQuery:address,fields:['location','formattedAddress','addressComponents'],maxResultCount:1});
         if(version!==addressLookupVersion)return;
         if(places?.[0]?.location){emitAddress(places[0],address);return;}
         throw new Error('No matching address. Search and choose an address suggestion.');
@@ -307,7 +364,7 @@ window.dashvantiSilverCarIcon=()=>({url:'data:image/svg+xml;charset=UTF-8,'+enco
       widget.addEventListener('gmp-select', async ({placePrediction}) => {
         const place = placePrediction.toPlace();
         try {
-          await place.fetchFields({fields: ['id', 'formattedAddress', 'location']});
+          await place.fetchFields({fields: ['id', 'formattedAddress', 'location', 'addressComponents']});
           if (widget.hasAttribute('data-saved-address')) {
             const form = widget.closest('form');
             form.elements.details.value = place.formattedAddress || '';
@@ -323,6 +380,18 @@ window.dashvantiSilverCarIcon=()=>({url:'data:image/svg+xml;charset=UTF-8,'+enco
   };
 
   document.addEventListener('dashvanti:map-select', (event) => selectLocation(event.detail).catch(() => {}));
+  document.addEventListener('dashvanti:restaurant-scope',event=>{
+    const state=states.get(document.getElementById('customer-pickup-map'));
+    if(!state)return;
+    state.markers.forEach((entry,id)=>{
+      if(id==='customer-current-address')return;
+      entry.marker.setMap(null);state.markers.delete(id);
+      if(entry.item.address)state.addresses.delete(entry.item.address.trim().toLowerCase());
+    });
+    event.detail.markers.forEach(item=>{
+      if(window.dashvantiValidCoordinates(item))addMarker(state,item,{lat:Number(item.latitude),lng:Number(item.longitude)});
+    });
+  });
   document.addEventListener('dashvanti:map-position', (event) => updateMapPosition(event.detail).catch(() => {}));
   document.addEventListener('dashvanti:address-geocode', (event) => lookupAddress(event.detail.address).catch(() => {}));
   document.addEventListener('dashvanti:use-current-location', () => useCurrentAddress().catch(() => {}));
@@ -330,7 +399,7 @@ window.dashvantiSilverCarIcon=()=>({url:'data:image/svg+xml;charset=UTF-8,'+enco
     await initializeAddressSearch();
     return Promise.all(mapElements.filter((element) => !element.closest('.is-hidden')).map(initializeMap));
   }).catch(() => {
-    mapElements.forEach((element) => setStatus(element, 'Google Maps could not load'));
-    document.dispatchEvent(new CustomEvent('dashvanti:address-error', {detail: {message: 'Google Maps could not load'}}));
+    mapElements.forEach((element) => setStatus(element, 'Map could not load'));
+    document.dispatchEvent(new CustomEvent('dashvanti:address-error', {detail: {message: 'Map could not load'}}));
   });
 })();

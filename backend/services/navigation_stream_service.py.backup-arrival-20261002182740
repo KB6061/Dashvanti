@@ -1,0 +1,134 @@
+import asyncio
+import html
+import json
+import math
+import os
+import re
+import time
+import httpx
+from sqlalchemy import select
+from backend.db import Session
+from backend.models import Order, Restaurant
+from backend.services.tracking_service import states
+from backend.services import redis_geo_service as geo
+
+
+def destination(order_id, driver_id):
+    with Session() as db:
+        order = db.get(Order, order_id)
+        if not order or order.driver_id != driver_id or order.status in {'DELIVERED','REJECTED','CANCELLED','CANCELED'}:
+            return None
+        restaurant = db.get(Restaurant, order.restaurant_id)
+        _, status, _ = states(db, order)
+        customer_leg = status in {'PICKED_UP','ON_THE_WAY_TO_CUSTOMER','ARRIVED_AT_CUSTOMER'}
+        address=order.address if customer_leg else restaurant.address if restaurant else None
+        return (address,'customer' if customer_leg else 'restaurant') if address and address.strip() else None
+
+
+def decode_polyline(encoded):
+    result = []; index = 0; lat = lng = 0
+    while index < len(encoded):
+        values = []
+        for _ in range(2):
+            value = shift = 0
+            while True:
+                byte = ord(encoded[index]) - 63; index += 1
+                value |= (byte & 31) << shift; shift += 5
+                if byte < 32: break
+            values.append(~(value >> 1) if value & 1 else value >> 1)
+        lat += values[0]; lng += values[1]; result.append((lat / 1e5, lng / 1e5))
+    return result
+
+
+def projection(path, lat, lng):
+    scale = 111320; cosine = math.cos(math.radians(lat)); best = None; travelled = 0
+    for a, b in zip(path, path[1:]):
+        x = (a[0]-lat)*scale; y = (a[1]-lng)*scale*cosine
+        dx = (b[0]-a[0])*scale; dy = (b[1]-a[1])*scale*cosine
+        length = math.hypot(dx,dy)
+        fraction = max(0,min(1,-(x*dx+y*dy)/(length*length))) if length else 0
+        gap = math.hypot(x+fraction*dx,y+fraction*dy)
+        if best is None or gap < best[0]: best = (gap,travelled+fraction*length)
+        travelled += length
+    return (*(best or (float('inf'),0)), travelled)
+
+
+def instruction(step):
+    return html.unescape(re.sub('<[^>]+>', ' ', step.get('html_instructions',''))).strip()
+
+
+async def navigate(redis, data):
+    if not data.get('order_id'): return
+    target = await asyncio.to_thread(destination,data['order_id'],data['driver_id'])
+    if not target: return
+    address, leg = target
+    key = f"navigation:route:{data['driver_id']}:{data['order_id']}:{leg}"
+    raw = await redis.get(key); cached = json.loads(raw) if raw else None
+    if cached:
+        gap,_,_ = projection(decode_polyline(cached['polyline']),data['latitude'],data['longitude'])
+        misses = f"navigation:off-route:{data['driver_id']}"
+        if gap > max(40,(data.get('accuracy') or 15)*1.5):
+            count = await redis.incr(misses); await redis.expire(misses,20)
+            if count >= 2: cached = None
+        else: await redis.delete(misses)
+    if not cached:
+        if not await redis.set(key+':request','1',nx=True,ex=15): return
+        api_key = os.environ.get('GOOGLE_MAPS_SERVER_API_KEY') or os.environ.get('GOOGLE_MAPS_API_KEY')
+        if not api_key: return
+        async with httpx.AsyncClient(timeout=6) as client:
+            response = await client.get('https://maps.googleapis.com/maps/api/directions/json',params={
+                'origin':f"{data['latitude']},{data['longitude']}", 'destination':address,
+                'mode':'driving','departure_time':'now','key':api_key,
+            })
+            response.raise_for_status(); found = response.json()
+        if found.get('status') != 'OK' or not found.get('routes'):
+            await redis.publish(geo.CHANNEL,json.dumps({'type':'navigation_error','driver_id':data['driver_id'],'order_id':data['order_id'],'detail':'Using browser route guidance','timestamp':data['timestamp']}))
+            return
+        route = found['routes'][0]; active = route['legs'][0]
+        cached = {'polyline':route['overview_polyline']['points'],'steps':active['steps'],'distance':active['distance']['value'],'duration':(active.get('duration_in_traffic') or active['duration'])['value']}
+        await redis.set(key,json.dumps(cached),ex=60)
+    path = decode_polyline(cached['polyline']); _,progress,total = projection(path,data['latitude'],data['longitude'])
+    remaining = max(0,total-progress); fraction = remaining/total if total else 0
+    steps = cached['steps']; start = 0; next_step = steps[-1] if steps else {}
+    for step in steps:
+        length = step['distance']['value']
+        if start+length > progress: next_step=step; break
+        start += length
+    plain = instruction(next_step)
+    names=[html.unescape(re.sub('<[^>]+>','',name)).strip() for name in re.findall(r'<b>(.*?)</b>',next_step.get('html_instructions',''))]
+    maneuvers={'left','right','north','south','east','west','northeast','northwest','southeast','southwest'}
+    street=next((name for name in names if name.lower() not in maneuvers and not re.fullmatch(r'\d+(st|nd|rd|th)',name)), '')
+    event = {**data,'type':'navigation','lat':data['latitude'],'lng':data['longitude'],
+        'street':street,
+        'instruction':plain,'instruction_id':leg+':'+str(start)+':'+plain,
+        'distance_to_turn':max(0,start+next_step.get('distance',{}).get('value',0)-progress),
+        'eta_seconds':round(cached['duration']*fraction),'distance_meters':round(cached['distance']*fraction),
+        'polyline':cached['polyline'],'stage':leg}
+    await redis.publish(geo.CHANNEL,json.dumps(event))
+
+
+async def subscribe(redis, manager):
+    from redis.asyncio import Redis
+    from backend.gps_config import REDIS_URL
+    connection = Redis.from_url(REDIS_URL,decode_responses=True,socket_timeout=None,socket_connect_timeout=2)
+    pending = {}
+    async def run(data):
+        try: await navigate(redis,data)
+        except asyncio.CancelledError: raise
+        except Exception as error:
+            import logging
+            logging.getLogger('dashvanti.navigation').warning('Navigation update unavailable (%s)',type(error).__name__)
+    try:
+        async with connection.pubsub() as subscriber:
+            await subscriber.subscribe(geo.CHANNEL)
+            async for message in subscriber.listen():
+                if message['type'] != 'message': continue
+                data = json.loads(message['data'])
+                if data.get('type') != 'driver_location': continue
+                uid = data['driver_id']
+                if uid not in pending or pending[uid].done(): pending[uid] = asyncio.create_task(run(data))
+                pending = {uid:task for uid,task in pending.items() if not task.done()}
+    finally:
+        for task in pending.values(): task.cancel()
+        await asyncio.gather(*pending.values(),return_exceptions=True)
+        await connection.aclose()

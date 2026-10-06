@@ -26,12 +26,13 @@
   dialog.querySelector('[data-browse]').onclick=()=>{dialog.close();if(location.pathname!=='/customer/restaurant/'+data.restaurant_id)location.assign('/customer/restaurant/'+data.restaurant_id+'?browse=1');};
   if(!dialog.open)dialog.showModal();
  }
- window.dashvantiStoreAvailable=async(entity,id)=>{
+ window.dashvantiStoreAvailable=async(entity,id,options={})=>{
   try{
    const response=await fetch('/customer/'+entity+'/'+id+'/order-availability',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(10000)});
    if(!response.ok||response.redirected)throw new Error();
    const data=await response.json();if(!data.is_open)show(data);return data.is_open;
   }catch(error){
+   if(options.allowOnError)return true;
    create();dialog.querySelector('h2').textContent='Unable to check restaurant availability';
    dialog.querySelector('.closed-store-list').textContent='Please close this window and try again.';
    dialog.querySelector('[data-browse]').onclick=()=>dialog.close();
@@ -47,7 +48,7 @@
   form.dataset.checking='1';
   try{
    const markers=JSON.parse(document.getElementById('checkout-restaurant-markers')?.textContent||'[]');
-   for(const marker of markers){if(!await window.dashvantiStoreAvailable('restaurant',marker.id.replace('restaurant-','')))return;}
+   for(const marker of markers){if(!await window.dashvantiStoreAvailable('restaurant',marker.id.replace('restaurant-',''),{allowOnError:true}))return;}
    form.dataset.availabilityChecked='1';form.requestSubmit(event.submitter||undefined);delete form.dataset.availabilityChecked;
   }catch(_){}finally{delete form.dataset.checking;}
  },true);

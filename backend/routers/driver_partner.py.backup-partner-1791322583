@@ -1,0 +1,235 @@
+from datetime import date
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Response, HTTPException, Request
+from fastapi.security import HTTPBearer
+from sqlalchemy import select
+from backend.db import get_db
+from backend.security import role, current_user, optional_bearer, admin_secret
+from backend.models import User, Driver, Order, Rating, AuditEvent
+from backend.models_driver_partner import DriverPartner, DriverDocument, DriverIncident, DriverInsurance, DriverInsuranceClaim, DriverDeposit, DriverWithdrawal, DriverVerification, DriverPushDevice
+from backend.schemas_driver_partner import Registration, AdminAction, DocumentReview, IncidentInput, WithdrawalInput, WithdrawalAction, InsuranceInput, OTPInput, Resolution, PushDeviceInput, ClaimInput, ManagerLogin
+from backend.services import driver_partner_service as service, driver_deposit_service as deposits
+
+router = APIRouter(tags=['Driver partners'])
+driver = role('driver')
+
+
+@router.post('/driver-partner/manager/login')
+def manager_login(data: ManagerLogin, db=Depends(get_db, scope='function')):
+    from types import SimpleNamespace
+    from backend.services.auth_service import login
+    return login(db, SimpleNamespace(email=data.email, password=data.password, role='operations_manager'))
+
+
+def manager(request: Request, auth=Depends(optional_bearer), db=Depends(get_db, scope='function')):
+    if auth:
+        user = current_user(request, auth, db)
+        if user.role not in {'admin', 'operations_manager'}: raise HTTPException(403, 'Manager access required')
+        return user
+    admin_secret(request.headers.get('X-Dashvanti-Admin-Secret', ''))
+    return None
+
+
+def admin(actor=Depends(manager)):
+    if actor and actor.role != 'admin': raise HTTPException(403, 'Admin access required')
+    return actor
+
+
+@router.get('/admin/driver-partners/{driver_id}/bank')
+def bank(driver_id: int, actor=Depends(admin), db=Depends(get_db, scope='function')):
+    value = service.unseal(service.partner(db, driver_id).profile)
+    service.audit(db, actor, driver_id, 'bank-details-viewed', '')
+    return {k: value.get(k, '') for k in ('account_holder', 'account_number', 'ifsc', 'upi')}
+
+
+@router.get('/driver/partner')
+def profile(user=Depends(driver), db=Depends(get_db, scope='function')):
+    return service.overview(db, user.id)
+
+
+@router.put('/driver/partner')
+def registration(data: Registration, user=Depends(driver), db=Depends(get_db, scope='function')):
+    return service.save_registration(db, user, data)
+
+
+@router.post('/driver/partner/submit')
+def submit(user=Depends(driver), db=Depends(get_db, scope='function')):
+    return service.submit(db, user)
+
+
+@router.post('/driver/partner/documents')
+def upload(kind: str = Form(...), expires_on: date | None = Form(None), file: UploadFile = File(...), user=Depends(driver), db=Depends(get_db, scope='function')):
+    return service.upload(db, user, kind, file, expires_on)
+
+
+@router.get('/driver/partner/documents/{document_id}')
+def document(document_id: int, user=Depends(driver), db=Depends(get_db, scope='function')):
+    return Response(service.document_bytes(db, document_id, user), media_type='image/jpeg', headers={'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
+
+
+@router.post('/driver/partner/deposit')
+def deposit_pay(user=Depends(driver), db=Depends(get_db, scope='function')):
+    return deposits.pay(db, user)
+
+
+@router.post('/driver/partner/deposits/{deposit_id}/status')
+def deposit_status(deposit_id: int, user=Depends(driver), db=Depends(get_db, scope='function')):
+    return deposits.recheck(db, user.id, deposit_id)
+
+
+@router.get('/driver/partner/earnings')
+def earnings(user=Depends(driver), db=Depends(get_db, scope='function')):
+    return service.earnings(db, user.id)
+
+
+@router.post('/driver/partner/devices')
+def device(data: PushDeviceInput, user=Depends(driver), db=Depends(get_db, scope='function')):
+    row = db.get(DriverPushDevice, data.installation_id)
+    other = db.scalar(select(DriverPushDevice).where(DriverPushDevice.token == data.token))
+    if (row and row.driver_id != user.id) or (other and other.installation_id != data.installation_id): raise HTTPException(409, 'Device is registered to another account or installation')
+    if not row: row = DriverPushDevice(installation_id=data.installation_id, driver_id=user.id, token=data.token, token_version=user.token_version); db.add(row)
+    row.token = data.token; row.token_version = user.token_version
+    return {'registered': True}
+
+
+@router.delete('/driver/partner/devices/{installation_id}')
+def remove_device(installation_id: str, user=Depends(driver), db=Depends(get_db, scope='function')):
+    row = db.get(DriverPushDevice, installation_id)
+    if row and row.driver_id == user.id: db.delete(row)
+    return {'removed': True}
+
+
+@router.get('/driver/partner/push-config')
+def push_config(user=Depends(driver)):
+    import os, json
+    cfg = json.loads(os.getenv('DRIVER_FIREBASE_WEB_CONFIG', '{}'))
+    allowed = {'apiKey', 'authDomain', 'projectId', 'messagingSenderId', 'appId'}
+    return {'firebase': {k: v for k, v in cfg.items() if k in allowed}, 'vapid_key': os.getenv('DRIVER_FIREBASE_VAPID_KEY', '')}
+
+
+@router.post('/driver/partner/withdrawals')
+def withdrawal(data: WithdrawalInput, user=Depends(driver), db=Depends(get_db, scope='function')):
+    return service.withdraw(db, user, data)
+
+
+@router.post('/driver/partner/incidents')
+def incident(data: IncidentInput, user=Depends(driver), db=Depends(get_db, scope='function')):
+    return service.incident(db, user, data)
+
+
+@router.get('/orders/{order_id}/delivery-otp')
+def customer_otp(order_id: int, user=Depends(role('customer')), db=Depends(get_db, scope='function')):
+    return service.otp_for_customer(db, user, order_id)
+
+
+@router.post('/orders/{order_id}/delivery-otp')
+def delivery_otp(order_id: int, data: OTPInput, user=Depends(driver), db=Depends(get_db, scope='function')):
+    return service.verify_otp(db, user, order_id, data.otp)
+
+
+@router.get('/admin/driver-partners')
+def listing(status: str = '', offset: int = 0, actor=Depends(manager), db=Depends(get_db, scope='function')):
+    query = select(DriverPartner)
+    if status: query = query.where((DriverPartner.status == status) | (DriverPartner.account_status == status))
+    rows = db.scalars(query.order_by(DriverPartner.updated_at.desc()).offset(max(0, offset)).limit(50))
+    return {'items': [service.overview(db, r.driver_id, True) for r in rows]}
+
+
+@router.get('/admin/driver-partners/reports/{kind}')
+def reports(kind: str, actor=Depends(manager), db=Depends(get_db, scope='function')):
+    models = {'deposits': DriverDeposit, 'incidents': DriverIncident, 'withdrawals': DriverWithdrawal, 'insurance-claims': DriverInsuranceClaim, 'verifications': DriverVerification}
+    if kind in models:
+        model = models[kind]
+        rows = db.scalars(select(model).order_by(model.id.desc()).limit(500))
+        return {'items': [{c.name: getattr(r, c.name) for c in model.__table__.columns} for r in rows]}
+    if kind == 'suspensions':
+        rows = db.scalars(select(AuditEvent).where(AuditEvent.action.in_(['driver-partner:SUSPEND', 'driver-partner:DEACTIVATE', 'driver-partner:WARNING'])).order_by(AuditEvent.id.desc()).limit(500))
+        return {'items': [{'driver_id': r.target, 'action': r.action, 'notes': r.details, 'created_at': r.created_at} for r in rows]}
+    if kind in {'active', 'online'}:
+        query = select(DriverPartner.driver_id).where(DriverPartner.account_status == 'ACTIVE')
+        if kind == 'online': query = query.join(Driver, Driver.id == DriverPartner.driver_id).where(Driver.online.is_(True))
+        return {'items': [service.overview(db, i) for i in db.scalars(query.limit(500))]}
+    if kind == 'earnings':
+        return {'items': [{'driver_id': i, **service.earnings(db, i)} for i in db.scalars(select(DriverPartner.driver_id).limit(500))]}
+    if kind == 'daily-deliveries':
+        from backend.models import DeliveryStatus, now
+        rows = db.execute(select(Order.id, Order.driver_id, DeliveryStatus.created_at).join(DeliveryStatus, DeliveryStatus.order_id == Order.id).where(DeliveryStatus.status == 'DELIVERED', DeliveryStatus.created_at >= now().replace(hour=0, minute=0, second=0)).limit(500))
+        return {'items': [{'order_id': r[0], 'driver_id': r[1], 'delivered_at': r[2]} for r in rows]}
+    if kind == 'ratings':
+        rows = db.execute(select(Rating.order_id, Order.driver_id, Rating.driver).join(Order, Order.id == Rating.order_id).where(Rating.driver.is_not(None)).limit(500))
+        return {'items': [{'order_id': r[0], 'driver_id': r[1], 'rating': r[2]} for r in rows]}
+    raise HTTPException(404, 'Unknown report')
+
+
+@router.get('/admin/driver-partners/{driver_id}')
+def detail(driver_id: int, actor=Depends(manager), db=Depends(get_db, scope='function')):
+    return service.overview(db, driver_id, True)
+
+
+@router.post('/admin/driver-partners/{driver_id}/action')
+def action(driver_id: int, data: AdminAction, actor=Depends(manager), db=Depends(get_db, scope='function')):
+    return service.admin_action(db, driver_id, data, actor)
+
+
+@router.get('/admin/driver-partners/documents/{document_id}/file')
+def admin_document(document_id: int, actor=Depends(manager), db=Depends(get_db, scope='function')):
+    return Response(service.document_bytes(db, document_id, actor), media_type='image/jpeg', headers={'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
+
+
+@router.post('/admin/driver-partners/documents/{document_id}/review')
+def review_document(document_id: int, data: DocumentReview, actor=Depends(manager), db=Depends(get_db, scope='function')):
+    row = db.get(DriverDocument, document_id)
+    if not row: raise HTTPException(404, 'Document not found')
+    row.status = data.status; row.notes = data.notes
+    service.audit(db, actor, row.driver_id, 'document:'+data.status, f'{row.kind}: {data.notes}')
+    service.notice(db, row.driver_id, 'DOCUMENT_'+data.status, row.kind.replace('_', ' ').title() + ': ' + data.status.lower())
+    return {'id': row.id, 'status': row.status}
+
+
+@router.put('/admin/driver-partners/{driver_id}/insurance')
+def insurance(driver_id: int, data: InsuranceInput, actor=Depends(admin), db=Depends(get_db, scope='function')):
+    service.partner(db, driver_id)
+    if data.active and data.expires_on <= date.today(): raise HTTPException(422, 'Policy must not be expired')
+    row = db.get(DriverInsurance, driver_id)
+    if not row: row = DriverInsurance(driver_id=driver_id); db.add(row)
+    for key, value in data.model_dump().items(): setattr(row, key, value)
+    service.audit(db, actor, driver_id, 'insurance-updated', data.policy_number)
+    return {'saved': True}
+
+
+@router.post('/admin/driver-partners/{driver_id}/insurance-claims')
+def claim(driver_id: int, data: ClaimInput, actor=Depends(admin), db=Depends(get_db, scope='function')):
+    incident = db.get(DriverIncident, data.incident_id)
+    insurance = db.get(DriverInsurance, driver_id)
+    if not incident or incident.driver_id != driver_id: raise HTTPException(404, 'Incident not found')
+    if not insurance or not insurance.policy_number: raise HTTPException(409, 'Record the issued insurance policy first')
+    row = db.scalar(select(DriverInsuranceClaim).where(DriverInsuranceClaim.driver_id == driver_id, DriverInsuranceClaim.reference == data.reference))
+    if not row: row = DriverInsuranceClaim(driver_id=driver_id, **data.model_dump()); db.add(row)
+    else:
+        for key, value in data.model_dump().items(): setattr(row, key, value)
+    service.audit(db, actor, driver_id, 'insurance-claim-updated', data.reference)
+    db.flush()
+    return {'id': row.id, 'status': row.status}
+
+
+@router.post('/admin/driver-partners/{driver_id}/deposits/{deposit_id}/refund')
+def deposit_refund(driver_id: int, deposit_id: int, actor=Depends(admin), db=Depends(get_db, scope='function')):
+    return deposits.refund(db, driver_id, deposit_id)
+
+
+@router.post('/admin/driver-partners/{driver_id}/deposits/{deposit_id}/status')
+def admin_deposit_status(driver_id: int, deposit_id: int, actor=Depends(admin), db=Depends(get_db, scope='function')):
+    return deposits.recheck(db, driver_id, deposit_id)
+
+
+@router.post('/admin/driver-partners/withdrawals/{withdrawal_id}')
+def withdrawal_process(withdrawal_id: int, data: WithdrawalAction, actor=Depends(admin), db=Depends(get_db, scope='function')):
+    return service.withdrawal_action(db, withdrawal_id, data, actor)
+
+
+@router.post('/admin/driver-partners/incidents/{incident_id}')
+def incident_resolution(incident_id: int, data: Resolution, actor=Depends(manager), db=Depends(get_db, scope='function')):
+    row = db.get(DriverIncident, incident_id)
+    if not row: raise HTTPException(404, 'Incident not found')
+    row.status = data.status; row.resolution = data.resolution
+    service.audit(db, actor, row.driver_id, 'incident-updated', f'{incident_id}: {data.resolution}')
+    return {'id': row.id, 'status': row.status}

@@ -16,7 +16,7 @@
     dialog.querySelector('[data-message]').textContent=data.action==='release'?'Delivery released. We are finding another driver.':'Order cancelled. Refund status: '+data.refund_status;
     form.hidden=true;
     const done=document.createElement('button');done.type='button';done.textContent='Continue';
-    done.onclick=()=>{if(data.action==='release')location.assign('/driver/dashboard');else location.reload();};
+    done.onclick=()=>{if(data.action==='release')location.assign('/driver/dashboard#order-requests');else location.reload();};
     dialog.append(done);
    }catch(error){dialog.querySelector('[data-message]').textContent=error.message+' Close this window and reopen to review current amounts.';}
    finally{busy=false;button.disabled=false;}

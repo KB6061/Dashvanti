@@ -8,8 +8,8 @@
   toggle.querySelector('span').textContent=collapsed?'+':'−';
   toggle.setAttribute('aria-label',collapsed?'Expand cart':'Minimize cart');
  }
- let saved=false;
- try{saved=sessionStorage.getItem('dashvanti-cart-minimized')==='true';}catch(_){}
+ let saved=window.matchMedia('(max-width:980px)').matches;
+ try{const stored=sessionStorage.getItem('dashvanti-cart-minimized');if(stored!==null)saved=stored==='true';}catch(_){}
  setCollapsed(saved);
  toggle.onclick=()=>{
   const collapsed=!cart.classList.contains('cart-minimized');
@@ -18,7 +18,7 @@
  };
  const sounds=document.querySelector('[data-order-alerts]');
  function position(){
-  const offset=sounds && sounds.getBoundingClientRect().height>0?Math.max(18,window.innerHeight-sounds.getBoundingClientRect().top+12):18;
+  const offset=sounds && sounds.getBoundingClientRect().height>0 && sounds.getBoundingClientRect().top>window.innerHeight/2?Math.max(18,window.innerHeight-sounds.getBoundingClientRect().top+12):18;
   cart.style.setProperty('--cart-bottom',offset+'px');
  }
  if(sounds)new ResizeObserver(position).observe(sounds);

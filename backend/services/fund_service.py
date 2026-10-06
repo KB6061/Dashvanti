@@ -44,7 +44,8 @@ def calculate(db, subtotal, mode, promo=Decimal('0')):
         calculated = subtotal * value / 100 if rule['method'] == 'percent' else value
         return money(max(calculated, Decimal(str(rule['minimum']))))
     tax = amount('tax')
-    service = amount('service_fee')
+    service_rule = configured.get('service_fee')
+    service = amount('service_fee') if service_rule else money(subtotal * Decimal('0.12'))
     delivery = amount('delivery_fee') if mode == 'delivery' else Decimal('0.00')
     discount = min(subtotal, max(amount('discount'), promo))
     return dict(subtotal=subtotal, tax=tax, service_fee=service, delivery_fee=delivery, discount=discount,

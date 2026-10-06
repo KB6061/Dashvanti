@@ -42,14 +42,32 @@ def renew_session(request):
         result = response.json()
         session['token'] = result['access_token']
         session['refresh_token'] = result['refresh_token']
+    elif response.status_code in {401, 403}:
+        raise APIError('Session expired', 401)
+    else:
+        raise APIError('Service temporarily unavailable. Please try again.', 503)
 
 def call(request, method, path, data=None, params=None, files=None, raw=False):
+    public_auth = path.startswith('/auth/') and path.rsplit('/', 1)[-1] in {'login', 'register', 'forgot', 'reset'}
     try:
-        renew_session(request)
+        if not public_auth:
+            renew_session(request)
     except (httpx.HTTPError, ValueError):
         raise APIError('Service temporarily unavailable. Please try again.',503)
+    if not public_auth and not request.session.get('token'):
+        raise APIError('Session expired', 401)
     headers = {'Authorization':'Bearer '+request.session['token']} if request.session.get('token') else {}
     headers['Cookie'] = ''
+    if path.startswith(('/payment/', '/phonepe/')):
+        import hashlib, hmac, os
+        key = os.environ.get('PAYMENT_PROXY_SECRET', '')
+        peer = request.META.get('REMOTE_ADDR', '')
+        address = request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[-1].strip() if peer in {'127.0.0.1', '::1'} else peer
+        if key and address:
+            timestamp = str(int(time.time()))
+            headers.update({'X-Dashvanti-Client-IP': address, 'X-Dashvanti-IP-Time': timestamp,
+                'X-Dashvanti-IP-Signature': hmac.new(key.encode(), f'{timestamp}:{address}'.encode(), hashlib.sha256).hexdigest()})
+
     try:
         response = api_client().request(method, settings.API_URL+path, headers=headers, params=params, **({'files':files,'data':data} if files else {'json':data}))
         if response.is_error:

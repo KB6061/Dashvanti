@@ -1,0 +1,61 @@
+(() => {
+ const role=['driver','restaurant','customer','admin'].find(role=>document.body.classList.contains(role+'-portal'));
+ if(!role||!document.querySelector('form[action$="/logout"],.portal-logout-button,[data-order-alerts]'))return;
+ let busy=false;
+ const selectors=['.order-board','.driver-live-status','.driver-requests-panel','.driver-upcoming-panel','main table tbody','.admin-kpis','.admin-volume-chart','.admin-rank-list','.restaurant-status','.driver-badges','[data-live-refresh]','.customer-live-card:not([data-live-tracking])'];
+ const editing=element=>element.contains(document.activeElement)&&document.activeElement.matches('input,textarea,select,button,[contenteditable]');
+ const patch=(old,fresh)=>{
+  if(old.dataset.submitting==='true'||old.querySelector('[data-submitting="true"]'))return;
+  if(editing(old))return;
+  if(old.matches('input:not([type=hidden]),textarea,select,[data-google-map],dialog')||old.querySelector('[data-google-map]'))return;
+  if(old.matches('form')&&old.querySelector('input:not([type=hidden]),textarea,select'))return;
+  if(old.matches('input[type=hidden]')){old.value=fresh.value;return;}
+  if(old.tagName!==fresh.tagName)return;
+  const attributes=['class','aria-valuenow'];
+  if(old.matches('button'))attributes.push('name','value','formaction','disabled');
+  if(old.matches('form'))attributes.push('action','method');
+  if(old.matches('a'))attributes.push('href');
+  attributes.forEach(name=>{if(fresh.hasAttribute(name)){if(old.getAttribute(name)!==fresh.getAttribute(name))old.setAttribute(name,fresh.getAttribute(name));}else if(name!=='class' && old.hasAttribute(name))old.removeAttribute(name);});
+  if(old.children.length!==fresh.children.length){
+   if(old.tagName==='TBODY'){
+    const key=row=>row.dataset.orderUrl||row.cells?.[0]?.textContent.trim();
+    const rows=new Map(Array.from(old.children).map(row=>[key(row),row]));
+    const incoming=new Set(Array.from(fresh.children).map(key));
+    rows.forEach((row,id)=>{if(!incoming.has(id)&&!editing(row)&&!row.querySelector('details[open]'))row.remove();});
+    Array.from(fresh.children).forEach(row=>{const existing=rows.get(key(row));if(existing)patch(existing,row);else old.append(row.cloneNode(true));});
+    return;
+   }
+   const cards=Array.from(fresh.querySelectorAll(':scope > [data-live-order-id]'));
+   if(cards.length){
+    const ids=new Set(cards.map(card=>card.dataset.liveOrderId));
+    old.querySelectorAll(':scope > [data-live-order-id]').forEach(card=>{if(!ids.has(card.dataset.liveOrderId)&&!editing(card))card.remove();});
+    cards.forEach(card=>{const existing=Array.from(old.children).find(child=>child.dataset.liveOrderId===card.dataset.liveOrderId);if(existing)patch(existing,card);else old.append(card.cloneNode(true));});
+    return;
+   }
+   if(!old.querySelector('input:not([type=hidden]),textarea,select'))old.replaceChildren(...Array.from(fresh.childNodes).map(node=>node.cloneNode(true)));
+   return;
+  }
+  if(!old.children.length){if(old.textContent!==fresh.textContent)old.textContent=fresh.textContent;return;}
+  Array.from(old.children).forEach((child,index)=>patch(child,fresh.children[index]));
+ };
+ const refresh=async()=>{
+  if(busy||document.hidden)return;
+  busy=true;
+  try{
+   const response=await fetch('/'+role+'/navigation-state',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(6000)});
+   if(!response.ok||response.redirected)return;
+   const snapshot=await response.json();
+   window.dashvantiNavigationActive=!!snapshot.navigation_active;
+   window.dispatchEvent(new CustomEvent('dashvanti:portal-live',{detail:snapshot}));
+   if(document.querySelector('dialog[open],.modal.show'))return;
+   const pageResponse=await fetch(location.href,{credentials:'same-origin',cache:'no-store',headers:{'X-Requested-With':'fetch'},signal:AbortSignal.timeout(6000)});
+   if(!pageResponse.ok||pageResponse.redirected)return;
+   const page=new DOMParser().parseFromString(await pageResponse.text(),'text/html');
+   selectors.forEach(selector=>{
+    const current=document.querySelectorAll(selector),incoming=page.querySelectorAll(selector);
+    current.forEach((old,index)=>{if(incoming[index])patch(old,incoming[index]);});
+   });
+  }catch(_){}finally{busy=false;}
+ };
+ refresh();setInterval(refresh,5000);
+})();

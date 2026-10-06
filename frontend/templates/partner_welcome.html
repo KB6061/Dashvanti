@@ -12,12 +12,12 @@
 <dialog class="customer-auth-popup" id="customer-auth-popup" data-open-auth="{{ open_auth }}" aria-labelledby="customer-auth-title">
   <button class="auth-popup-close" type="button" aria-label="Close">&times;</button>
   <h2 id="customer-auth-title">Sign in</h2>
-  <form method="post" action="/{{ portal }}/login" data-auth-form="login" hidden>
+  <form method="post" action="/{{ portal }}/login" data-auth-form="login" data-no-ajax="true" hidden>
     {% csrf_token %}{{ customer_login_form.as_p }}
     <button type="submit">Sign In</button>
     <a href="/{{ portal }}/forgot">Forgot password?</a>
   </form>
-  <form method="post" action="/{{ portal }}/register" data-auth-form="register" hidden>
+  <form method="post" action="/{{ portal }}/register" data-auth-form="register" data-no-ajax="true" hidden>
     {% csrf_token %}{{ customer_register_form.as_p }}
     <button type="submit">Sign Up</button>
   </form>

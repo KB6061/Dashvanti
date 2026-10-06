@@ -1,0 +1,339 @@
+(() => {
+ const host = document.querySelector('[data-live-tracking]');
+ if(!host) return;
+
+ const mapElement = host.querySelector('[data-google-map]');
+ const role = host.dataset.trackingRole || 'customer';
+
+ const labels = {
+   CANCELLED: 'Order cancelled',
+   CANCELED: 'Order cancelled',
+   PLACED: 'Order placed',
+   ACCEPTED: 'Order preparing',
+   CONFIRMED: 'Order preparing',
+   PREPARING: 'Order preparing',
+   PACKING: 'Order packing',
+   WRAPPING_UP: 'Order wrapping up',
+   READY_FOR_PICKUP: 'Order prepared & waiting for pickup',
+   DRIVER_ASSIGNED: 'Driver assigned',
+   ON_THE_WAY_TO_RESTAURANT: 'Driver heading to restaurant',
+   ARRIVED_AT_RESTAURANT: 'Driver arrived at restaurant',
+   PICKED_UP: 'Driver picked up order',
+   ON_THE_WAY_TO_CUSTOMER: 'Driver out for delivery',
+   ARRIVED_AT_CUSTOMER: 'Driver arrived at customer address',
+   DELIVERED: 'Order delivered',
+   REJECTED: 'Order rejected'
+ };
+
+ const text = (selector, value) => {
+   const el = host.querySelector(selector);
+   if(el) el.textContent = value;
+ };
+
+ let polling = false, failures = 0, lastSuccess = 0;
+ let car, frame, state, pollTimer, routeTime = 0, routeKey = '', driverId, disposed = false, routeBusy = false, fitted = false, latest;
+ const renderers = [];
+ const endpointMarkers = new Map();
+
+
+
+ function endpointIcon(label, color) {
+   return {path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: color, fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 3, labelOrigin: new google.maps.Point(0, 0)};
+ }
+
+ function carIcon(heading = 0) {
+   const angle = Number(heading) || 0;
+   return {
+     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+       <svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">
+         <defs>
+           <linearGradient id="body" x1="18" y1="8" x2="54" y2="64" gradientUnits="userSpaceOnUse">
+             <stop offset="0" stop-color="#ffffff"/>
+             <stop offset=".42" stop-color="#cfd5d8"/>
+             <stop offset=".7" stop-color="#8f9aa0"/>
+             <stop offset="1" stop-color="#f2f5f6"/>
+           </linearGradient>
+           <linearGradient id="glass" x1="24" y1="18" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+             <stop offset="0" stop-color="#dff7ff"/>
+             <stop offset="1" stop-color="#5e7d8c"/>
+           </linearGradient>
+           <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+             <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#0b1f24" flood-opacity=".35"/>
+           </filter>
+         </defs>
+         <g transform="rotate(${angle} 36 36)" filter="url(#shadow)">
+           <path d="M36 7c8 0 16 15 18 31l-4 22c-.4 2.5-2.5 4-5 4H27c-2.5 0-4.6-1.5-5-4l-4-22C20 22 28 7 36 7z" fill="url(#body)" stroke="#647178" stroke-width="2"/>
+           <path d="M27 25c2.2-7.5 5.4-12 9-12s6.8 4.5 9 12H27z" fill="url(#glass)" stroke="#7f8d93" stroke-width="1.3"/>
+           <path d="M25 32h22l2 13H23l2-13z" fill="#eef2f3" stroke="#9aa4a9" stroke-width="1"/>
+           <path d="M24 55h24" stroke="#6c767b" stroke-width="3" stroke-linecap="round"/>
+           <circle cx="25" cy="45" r="3" fill="#ffffff"/>
+           <circle cx="47" cy="45" r="3" fill="#ffffff"/>
+           <path d="M31 62h10" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity=".8"/>
+         </g>
+       </svg>
+     `),
+     scaledSize: new google.maps.Size(34, 34),
+     anchor: new google.maps.Point(17, 17)
+   };
+ }
+
+ function geocodePoint(value) {
+   if(!value) return Promise.reject(new Error('Missing point'));
+   if(typeof value === 'object' && Number.isFinite(Number(value.lat)) && Number.isFinite(Number(value.lng))) {
+     return Promise.resolve({lat:Number(value.lat), lng:Number(value.lng)});
+   }
+   if(typeof value === 'object' && Number.isFinite(Number(value.latitude)) && Number.isFinite(Number(value.longitude))) {
+     return Promise.resolve({lat:Number(value.latitude), lng:Number(value.longitude)});
+   }
+   return new Promise((resolve, reject) => {
+     const geocoder = state?.geocoder || new google.maps.Geocoder();
+     geocoder.geocode({address:String(value)}, (results, status) => {
+       if(status === 'OK' && results?.[0]) resolve(results[0].geometry.location);
+       else reject(new Error('Address not found'));
+     });
+   });
+ }
+
+ async function ensureEndpointMarker(key, label, title, point, color) {
+   if(!state?.map || !point) return null;
+   const position = await geocodePoint(point);
+   let marker = endpointMarkers.get(key);
+   const isDriver = key === 'driver';
+   if(!marker) {
+     marker = new google.maps.Marker({map: state.map, position, title, label:isDriver ? null : {text:label,color:'#fff',fontWeight:'900'}, icon:isDriver ? carIcon(point.heading || 0) : endpointIcon(label,color), zIndex: isDriver ? 999 : 20});
+     endpointMarkers.set(key, marker);
+   } else {
+     marker.setPosition(position);
+     if(isDriver) marker.setIcon(carIcon(point.heading || 0));
+   }
+   return position;
+ }
+
+ function vehicleIcon(heading = 0) {
+   return carIcon(heading);
+ }
+
+ function move(location) {
+   if(!location || !Number.isFinite(location.latitude) || !Number.isFinite(location.longitude)) return;
+   const target = {lat: location.latitude, lng: location.longitude};
+   const heading = location.heading || 0;
+
+   if(!car) {
+     car = new google.maps.Marker({
+       map: state.map,
+       position: target,
+       icon: vehicleIcon(heading),
+       zIndex: 999,
+       title: 'Delivery Partner (Live)'
+     });
+     if(role === 'customer' && !fitted) {
+       state.map.panTo(target);
+     }
+     return;
+   }
+
+   car.setIcon(vehicleIcon(heading));
+   cancelAnimationFrame(frame);
+   const start = car.getPosition();
+   const began = performance.now();
+   const duration = 1500; // Smooth 1.5s animation between updates
+
+   const animate = now => {
+     const progress = Math.min((now - began) / duration, 1);
+     const ease = progress * progress * (3 - 2 * progress); // Smooth step
+     const currentLat = start.lat() + (target.lat - start.lat()) * ease;
+     const currentLng = start.lng() + (target.lng - start.lng()) * ease;
+     car.setPosition({lat: currentLat, lng: currentLng});
+     if(progress < 1 && !disposed) {
+       frame = requestAnimationFrame(animate);
+     }
+   };
+   frame = requestAnimationFrame(animate);
+ }
+
+ function route(origin, destination) {
+   return new google.maps.DirectionsService().route({
+     origin,
+     destination,
+     travelMode: google.maps.TravelMode.DRIVING,
+     drivingOptions: {departureTime: new Date()},
+     unitSystem: google.maps.UnitSystem.IMPERIAL
+   });
+ }
+
+ async function drawRoutes(data) {
+   const key = [data.driver_id, data.restaurant.address, data.destination, data.driver_status].join('|');
+   if(routeBusy || (key === routeKey && Date.now() - routeTime < 15000)) return;
+   routeBusy = true; routeTime = Date.now();
+   try {
+     const afterPickup = ['PICKED_UP','ON_THE_WAY_TO_CUSTOMER','ARRIVED_AT_CUSTOMER','DELIVERED'].includes(data.driver_status);
+     const routeIsFallback = data.route?.fallback === true;
+     const restaurantPoint = !routeIsFallback && Number.isFinite(data.restaurant.lat) && Number.isFinite(data.restaurant.lng)
+       ? {lat: data.restaurant.lat, lng: data.restaurant.lng}
+       : data.restaurant.address;
+     const customerPoint = !routeIsFallback && data.customer_location && Number.isFinite(Number(data.customer_location.lat)) && Number.isFinite(Number(data.customer_location.lng))
+       ? {lat: Number(data.customer_location.lat), lng: Number(data.customer_location.lng)}
+       : data.destination;
+
+     const jobs = [];
+     if(role === 'customer') {
+       jobs.push(route(restaurantPoint, customerPoint));
+     }
+     if(role === 'driver' && !afterPickup) {
+       jobs.push(route(restaurantPoint, customerPoint));
+     }
+     if(data.location && data.driver_status !== 'DELIVERED') {
+       jobs.push(route({lat: data.location.latitude, lng: data.location.longitude}, afterPickup ? customerPoint : restaurantPoint));
+     }
+
+     if(!jobs.length) {
+       text('[data-tracking-eta]', 'Waiting for driver location…');
+       return;
+     }
+
+     await Promise.allSettled([
+       ensureEndpointMarker('restaurant','R',data.restaurant.name || 'Restaurant',restaurantPoint,'#d83b2d'),
+       ensureEndpointMarker('destination','H','Delivery address',customerPoint,'#d83b2d'),
+       data.location ? ensureEndpointMarker('driver','D','Driver location',{lat:data.location.latitude,lng:data.location.longitude,heading:data.location.heading || 0},'#0b6569') : Promise.resolve(null)
+     ]);
+
+     const results = await Promise.all(jobs);
+     if(disposed || latest.driver_id !== data.driver_id || latest.driver_status !== data.driver_status) return;
+
+     renderers.forEach(r => r.setMap(null));
+     renderers.length = 0;
+
+     results.forEach((result, index) => {
+       const renderer = new google.maps.DirectionsRenderer({
+         map: state.map,
+         preserveViewport: fitted,
+         suppressMarkers: true, // Use Dashvanti R/D/H markers only; avoid wrong Google A/B labels
+         polylineOptions: {
+           strokeColor: index === 0 ? '#1b806a' : '#0b6569',
+           strokeWeight: 6,
+           strokeOpacity: 0.85
+         }
+       });
+       renderer.setDirections(result);
+       renderers.push(renderer);
+     });
+
+     const active = results[results.length - 1].routes[0].legs[0];
+     const activeSeconds = (active.duration_in_traffic || active.duration).value;
+     const directionsPanel = host.querySelector('[data-route-directions]');
+     if(directionsPanel) {
+       directionsPanel.replaceChildren();
+       const summary = document.createElement('p');
+       summary.className = 'driver-route-instruction';
+       summary.textContent = active.start_address + ' → ' + active.end_address + ' · ' + active.distance.text + ' · ' + (active.duration_in_traffic || active.duration).text;
+       directionsPanel.append(summary);
+       const list = document.createElement('ol');
+       list.className = 'driver-route-steps';
+       const spokenSteps = [];
+       active.steps.forEach((step, index) => {
+         const item = document.createElement('li');
+         const clean = step.instructions.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+         item.textContent = (index + 1) + '. ' + clean + ' · ' + step.distance.text;
+         spokenSteps.push({instruction: clean, distance: step.distance.text, duration: step.duration?.text || ''});
+         list.append(item);
+       });
+       directionsPanel.append(list);
+       window.dispatchEvent(new CustomEvent('dashvanti:navigation-route', {detail: {origin: active.start_address, destination: active.end_address}}));
+       window.dispatchEvent(new CustomEvent('dashvanti:navigation-steps', {detail: {summary: summary.textContent, steps: spokenSteps}}));
+     }
+
+     text('[data-tracking-distance]', (active.distance.value / 1609.344).toFixed(1) + ' miles away');
+
+     if(!fitted && results[0]) {
+       const bounds = new google.maps.LatLngBounds();
+       results.forEach(result => result.routes[0].bounds && bounds.union(result.routes[0].bounds));
+       if(data.location) bounds.extend({lat: data.location.latitude, lng: data.location.longitude});
+       state.map.fitBounds(bounds, 50);
+       fitted = true;
+     }
+
+     const etaMin = Math.max(1, Math.ceil(activeSeconds / 60));
+     text('[data-tracking-eta]', data.driver_status === 'DELIVERED' ? 'Delivered 🎉' : (afterPickup ? 'Estimated Delivery Arrival: ' : 'Estimated Pickup Time: ') + etaMin + ' min');
+     routeKey = key;
+   } catch(error) {
+     text('[data-tracking-eta]', 'Calculating route and ETA…');
+   } finally {
+     routeBusy = false;
+   }
+ }
+
+ async function poll() {
+   if(disposed || polling) return;
+   polling = true; clearTimeout(pollTimer);
+   let received = false;
+   try {
+     const response = await fetch(host.dataset.trackingUrl, {credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(10000)});
+     if(response.status === 401 || response.status === 403 || response.redirected) {
+       disposed = true;
+       text('[data-tracking-health]', 'Please sign in to track order');
+       return;
+     }
+     if(!response.ok) throw new Error('Tracking unavailable');
+     const data = await response.json();
+     if(!data || typeof data.status !== 'string') throw new Error('Invalid tracking payload');
+
+     received = true;
+     latest = data;
+     window.dispatchEvent(new CustomEvent('dashvanti:tracking', {detail: data}));
+
+     // Update Order Status Steps & Labels
+     text('[data-restaurant-activity]', labels[data.restaurant_status] || data.restaurant_status);
+     text('[data-driver-activity]', labels[data.driver_status] || 'Assigning delivery partner');
+
+     const statusEl = document.getElementById('order-status');
+     if(statusEl) statusEl.textContent = labels[data.status] || data.status;
+
+     text('[data-tracking-health]', data.location ? (data.location.stale ? 'GPS signal delayed · showing last known position' : '🟢 Live GPS · Updated ' + new Date(data.location.updated_at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit', second:'2-digit', hour12:true})) : 'Driver assigned · waiting for GPS stream');
+
+     state = mapElement?.dashvantiMapState;
+     if(state) {
+       if(driverId !== data.driver_id) {
+         cancelAnimationFrame(frame);
+         car?.setMap(null); car = null;
+         driverId = data.driver_id;
+         routeKey = ''; fitted = false;
+         renderers.forEach(r => r.setMap(null)); renderers.length = 0;
+       }
+
+       if(data.location) {
+         move(data.location);
+         void ensureEndpointMarker('driver','D','Driver location',{lat:data.location.latitude,lng:data.location.longitude},'#0b6569');
+       }
+
+       if(['CANCELLED','CANCELED','REJECTED','DELIVERED'].includes(data.status)) {
+         if(data.status === 'DELIVERED') {
+           text('[data-tracking-eta]', 'Order Delivered 🎉');
+         } else {
+           car?.setMap(null);
+           renderers.forEach(r => r.setMap(null));
+           text('[data-tracking-eta]', 'Order Cancelled');
+         }
+       } else if(data.mode === 'delivery') {
+         void drawRoutes(data);
+       }
+     }
+     failures = 0; lastSuccess = Date.now();
+   } catch(error) {
+     failures++;
+     if(failures >= 2 || !lastSuccess) {
+       text('[data-tracking-health]', 'Reconnecting to live tracking stream…');
+     }
+   } finally {
+     polling = false;
+     if(!disposed) {
+       pollTimer = setTimeout(poll, 5000); // 5s poll interval for real-time tracking
+     }
+   }
+ }
+
+ window.addEventListener('online', () => { if(!disposed) { failures = 0; clearTimeout(pollTimer); void poll(); } });
+ window.addEventListener('pageshow', event => { if(event.persisted) { disposed = false; void poll(); } });
+ window.addEventListener('pagehide', () => { disposed = true; clearTimeout(pollTimer); cancelAnimationFrame(frame); renderers.forEach(r => r.setMap(null)); });
+
+ poll();
+})();

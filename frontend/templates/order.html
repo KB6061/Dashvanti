@@ -1,18 +1,35 @@
 {% extends 'base.html' %}
 {% block content %}
+{% if request.session.role == 'customer' %}<section class="card" data-delivery-otp-box {% if not delivery_otp %}hidden{% endif %} aria-label="Delivery verification"><strong data-delivery-otp>Delivery OTP: {{ delivery_otp|default:'' }}</strong><p>Share this code only when your order arrives.</p></section><script>(()=>{let busy=false;async function poll(){if(busy||document.hidden)return;busy=true;try{const r=await fetch(location.pathname+'?poll=1',{credentials:'same-origin',cache:'no-store'});if(r.ok){const d=await r.json();const box=document.querySelector('[data-delivery-otp-box]');box.hidden=!d.delivery_otp;box.querySelector('[data-delivery-otp]').textContent='Delivery OTP: '+(d.delivery_otp||'');}}catch(e){}finally{busy=false;}}setInterval(poll,5000);window.addEventListener('dashvanti:order-update',poll);document.addEventListener('visibilitychange',poll);})();</script>{% endif %}
+{% if request.session.role == 'driver' and requires_delivery_otp %}<form class="card" method="post" data-no-ajax="true">{% csrf_token %}<input type="hidden" name="status" value="DELIVERED"><label>Customer delivery OTP<input name="otp" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required></label><button>Verify OTP &amp; complete delivery</button></form>{% endif %}
+
 {% if portal == 'driver' %}{% csrf_token %}{% endif %}
-<h1>Order #{{ order.id }}</h1>
+{% if portal == 'driver' %}
+<header class="driver-order-header"><h1>Order #{{ order.id }}</h1><div class="driver-order-controls">
+  {% if order.status != "DELIVERED" and order.status != "CANCELLED" and order.status != "REJECTED" %}<button type="button" data-cancel-order="/{{ portal }}/order/{{ order.id }}/cancellation">{% if portal == "driver" %}Release delivery{% else %}Cancel order{% endif %}</button>{% endif %}
+  <div data-order-actions>
+  {% for action in actions %}
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="status" value="{{ action }}">
+    <button class="btn btn-primary">{{ action }}</button>
+  </form>
+  {% endfor %}
+  </div>
+</div></header>
+{% else %}<h1>Order #{{ order.id }}</h1>{% endif %}
+  {% if show_live_map %}
   {% if portal == 'customer' or portal == 'driver' %}
   {{ tracking_markers|json_script:"customer-order-map-markers" }}
   <div class="customer-live-card" data-live-tracking data-order-id="{{ order.id }}" data-tracking-url="/{{ portal }}/order/{{ order.id }}/tracking" data-tracking-role="{{ portal }}">
     <div>
       <div id="customer-order-map" class="dashvanti-google-map customer-order-live-map" data-google-map data-map-markers-id="customer-order-map-markers" data-map-current-location="false" aria-label="Live restaurant and driver tracking map"></div>
-      <p class="map-load-status" data-map-status>Loading live Google Map…</p>
-      <div class="customer-map-legend"><span><b>R</b> Restaurant</span><span><b>D</b> Driver</span>{% if order.mode == 'delivery' %}<span><b>H</b> Delivery address</span>{% endif %}</div>
+      <p class="map-load-status" data-map-status>Loading live map…</p>
     </div>
+    {% if portal != "driver" %}
     <div class="customer-live-copy">
       <p class="eyebrow">LIVE GPS TRACKING</p>
-      <h2>Restaurant and driver</h2><p data-restaurant-activity aria-live="polite"></p><p data-driver-activity aria-live="polite"></p><p data-tracking-eta aria-live="polite"></p><p data-tracking-distance></p><p data-tracking-health role="status"></p>{% if portal == "driver" %}<details><summary>Turn-by-turn directions</summary><div data-route-directions></div></details>{% endif %}
+      <h2>Restaurant and driver</h2><p data-restaurant-activity aria-live="polite"></p><p data-driver-activity aria-live="polite"></p><p data-tracking-eta aria-live="polite"></p><p data-tracking-distance></p><p data-tracking-health role="status"></p>
       <p><strong>{{ restaurant.name }}</strong><br>{{ restaurant.address }}</p>
       <p id="driver-assignment-status">{% if driver %}{{ driver.name }} is assigned to your order.{% else %}Waiting for a delivery partner.{% endif %}</p>
       <p id="driver-vehicle">{% if driver %}{{ driver.vehicle_type|default:'Vehicle' }} {{ driver.vehicle_number }}{% endif %}</p>
@@ -22,12 +39,16 @@
       <p id="driver-location">Waiting for live GPS signal.</p>
       {% endif %}
     </div>
+    {% else %}
+    <div class="driver-hidden-tracking-copy" hidden><p data-restaurant-activity></p><p data-driver-activity></p><p data-tracking-eta></p><p data-tracking-distance></p><p data-tracking-health></p><div data-route-directions></div></div>
+    {% endif %}
   </div>
   {% endif %}
 
+{% endif %}
 {% if cancellation %}<section class="card"><h2>Cancellation details</h2><p>{{ cancellation.reason }}</p><p>Cancellation charge: &#36;{{ cancellation.charge }} · New refund request: &#36;{{ cancellation.refund }} · {{ cancellation.refund_status }}</p></section>{% endif %}
 <section class="card" >
-  <p class="eyebrow" id="order-status">{% if order.status == 'ACCEPTED' or order.status == 'CONFIRMED' or order.status == 'PREPARING' %}Preparing Order{% else %}{{ order.status }}{% endif %}</p>
+  <p class="eyebrow" id="order-status" data-order-status="{{ order.id }}" data-status="{{ order.status }}" aria-live="polite">{% if order.status == 'ACCEPTED' or order.status == 'CONFIRMED' or order.status == 'PREPARING' %}Preparing Order{% else %}{{ order.status }}{% endif %}</p>
 
   <div class="order-table-wrap"><table class="order-data-table"><caption>Order summary</caption><tbody>
   <tr><th>Fulfilment</th><td>{{ order.mode|title }}</td></tr><tr><th>Address</th><td>{{ order.address }}</td></tr>
@@ -48,6 +69,7 @@
   <p>Customer: {{ customer.name }} &middot; {{ customer.phone|default:'phone not added' }}</p>
   {% endif %}
   <a class="order-chat-link" href="/{{ portal }}/order/{{ order.id }}/chat">Order chat</a>
+  {% if portal != 'driver' %}
   {% if order.status != "DELIVERED" and order.status != "CANCELLED" and order.status != "REJECTED" %}<button type="button" data-cancel-order="/{{ portal }}/order/{{ order.id }}/cancellation">{% if portal == "driver" %}Release delivery{% else %}Cancel order{% endif %}</button>{% endif %}
   <div data-order-actions>
   {% for action in actions %}
@@ -58,6 +80,7 @@
   </form>
   {% endfor %}
   </div>
+  {% endif %}
 </section>
 
 <h2 class="mt-4">Order timeline</h2>

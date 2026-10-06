@@ -1,0 +1,47 @@
+body.customer-shell-page{--customer-sidebar-width:64px}
+body.customer-shell-page .customer-sidebar,
+body.customer-shell-page .customer-sidebar:hover,
+body.customer-shell-page .customer-sidebar:has(:focus-visible){
+ width:64px;padding:6px 4px;overflow:hidden;box-shadow:none;
+}
+body.customer-shell-page .customer-sidebar .customer-menu-toggle{
+ display:flex;flex-direction:column;align-items:center;justify-content:center;
+ flex-shrink:0;gap:9px;width:56px;min-height:70px;padding:10px 8px;
+ border:0;border-radius:0;background:#203957;color:white;cursor:pointer;
+}
+body.customer-shell-page .customer-menu-toggle:hover{background:#2c4b70}
+body.customer-shell-page .customer-menu-toggle:focus-visible{outline:2px solid #e5bf21;outline-offset:2px}
+body.customer-shell-page .customer-menu-toggle svg{width:30px;height:26px;flex-shrink:0}
+body.customer-shell-page .customer-menu-toggle .customer-menu-label{
+ display:block;opacity:1;width:auto;overflow:visible;color:white;
+ font:700 9px/1.2 Arial,sans-serif;letter-spacing:.5px;
+}
+body.customer-shell-page .customer-menu-items[hidden]{display:none!important}
+body.customer-shell-page .customer-menu-items{
+ display:flex;flex-direction:column;flex:1;gap:8px;min-height:0;margin-top:6px;
+}
+body.customer-shell-page.customer-menu-open .customer-sidebar{
+ width:min(240px,calc(100vw - 16px));padding:6px 4px;box-shadow:8px 0 24px #0002;
+}
+body.customer-shell-page .customer-menu-items .sidebar-home,
+body.customer-shell-page .customer-menu-items .sidebar-categories a,
+body.customer-shell-page .customer-menu-items .sidebar-bottom-actions>a,
+body.customer-shell-page .customer-menu-items .sidebar-bottom-actions>button{
+ display:flex;flex-direction:row;align-items:center;justify-content:flex-start;
+ gap:12px;padding:11px 14px;min-height:44px;font-size:17px;
+ border:0;border-radius:8px;white-space:nowrap;text-decoration:none;color:#173f30;
+}
+body.customer-shell-page .customer-menu-items .sidebar-home{background:#eef4e8}
+body.customer-shell-page .customer-menu-items span{
+ display:inline-block;opacity:1;width:auto;overflow:visible;font-size:13px;
+}
+body.customer-shell-page .customer-menu-items .sidebar-categories{
+ display:grid;flex:1;min-height:0;overflow-y:auto;
+}
+body.customer-shell-page .customer-menu-items .sidebar-bottom-actions{
+ position:static;margin-top:auto;flex-shrink:0;width:100%;
+}
+body.customer-shell-page .account-drawer{
+ left:72px;max-width:calc(100vw - 80px);
+}
+@media(prefers-reduced-motion:reduce){body.customer-shell-page .customer-sidebar{transition:none}}

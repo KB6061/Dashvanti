@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends
 from backend.db import get_db
 from backend.security import admin_secret
-from backend.schemas import FundRuleInput, RefundInput, QuickPayInput
+from backend.schemas import FundRuleInput, RefundInput
+from backend.payout_schemas import PayoutInput, PayoutSettingsInput, PayoutRecipientInput
+from backend.services import payout_service
+from backend.utils.payment_security import https_or_internal
 from backend.services import fund_service, revenue_service
 router = APIRouter(prefix='/operations/funds', dependencies=[Depends(admin_secret)])
 @router.get('')
@@ -17,8 +20,8 @@ def revenue(date_range: str = '', start_date: str = '', end_date: str = '', rest
     })
 
 @router.post('/quick-pay', status_code=201)
-def quick_pay(data: QuickPayInput, db=Depends(get_db, scope='function')):
-    return revenue_service.quick_pay(db, data.order_id, data.payee_role)
+def quick_pay(data: PayoutInput, _=Depends(https_or_internal), db=Depends(get_db, scope='function')):
+    return payout_service.send(db, data)
 @router.put('/rules/{kind}')
 def save(kind: str, data: FundRuleInput, db=Depends(get_db, scope='function')):
     return fund_service.save_rule(db, kind, data)
@@ -35,3 +38,19 @@ def edit_refund(refund_id: str, data: RefundInput, db=Depends(get_db, scope='fun
 @router.delete('/refunds/{refund_id}')
 def delete_refund(refund_id: str, db=Depends(get_db, scope='function')):
     return fund_service.delete_refund(db, refund_id)
+
+@router.get('/payout-settings')
+def payout_settings(_=Depends(https_or_internal), db=Depends(get_db, scope='function')):
+    return payout_service.settings_view(db)
+
+@router.put('/payout-settings')
+def update_payout_settings(data: PayoutSettingsInput, _=Depends(https_or_internal), db=Depends(get_db, scope='function')):
+    return payout_service.save_settings(db,data)
+
+@router.put('/payout-recipient')
+def update_payout_recipient(data: PayoutRecipientInput, _=Depends(https_or_internal), db=Depends(get_db, scope='function')):
+    return payout_service.save_recipient(db,data)
+
+@router.post('/payouts/{payout_id}/status')
+def payout_status(payout_id: int, _=Depends(https_or_internal), db=Depends(get_db, scope='function')):
+    return payout_service.reconcile(db,payout_id)

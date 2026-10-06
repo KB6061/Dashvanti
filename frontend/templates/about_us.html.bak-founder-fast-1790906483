@@ -1,0 +1,29 @@
+{% extends about_base|default:'base.html' %}
+{% block content %}
+<section class="about-dashvanti">
+  <p class="eyebrow">Good food. Built on trust.</p>
+  <h1>About Dashvanti</h1>
+  <p>Dashvanti is a modern food-delivery platform built and developed by <strong>Krishna Bhandare</strong>, an IT professional based in Nashville, Tennessee, USA — 37211. The platform focuses on delivering a smooth, reliable, and secure food-ordering experience for customers and restaurants.</p>
+  <section class="about-founder{% if founder_photo %} with-photo{% endif %}" aria-labelledby="founder-name">
+    {% if founder_photo %}<img src="{{ founder_photo }}" alt="Krishna Bhandare, CEO and Founder of Dashvanti" width="508" height="594" class="founder-portrait">{% endif %}
+    <div>
+      <p class="eyebrow">Meet our founder</p>
+      <h2 id="founder-name">Krishna Bhandare</h2>
+      <p class="founder-title">CEO &amp; Founder of Dashvanti (DashV)</p>
+      <p>Krishna is an IT professional based in Nashville, Tennessee, and the creator of Dashvanti. He brings his technology background to building a food-delivery platform focused on clean design, reliability, and a secure ordering experience.</p>
+      <p>His vision for Dashvanti is to connect customers with local restaurants through simple ordering, transparent service, and real-time order tracking.</p>
+    </div>
+  </section>
+  <p>Our mission is to combine clean design, fast delivery, secure payments, and real-time order tracking to create a service people can trust.</p>
+  <p>Dashvanti is guided by values of quality, transparency, customer satisfaction, and strong technology.</p>
+  <section class="about-contact" aria-labelledby="about-contact-title">
+    <h2 id="about-contact-title">Support &amp; business inquiries</h2>
+    <a href="mailto:support@dashvanti.com">support@dashvanti.com</a>
+    <div><a href="tel:+16154786018">+16154786018</a><span aria-hidden="true"> / </span><a href="tel:+919096896318">+919096896318</a></div>
+  </section>
+</section>
+<style>
+.about-dashvanti{max-width:840px;margin:40px auto;padding:36px;border:1px solid #dce5d8;border-radius:20px;background:#fff;color:#173f30;box-shadow:0 8px 28px #173f3008}.about-dashvanti h1{font-size:clamp(30px,5vw,44px);line-height:1.15;margin:8px 0 24px}.about-dashvanti>p:not(.eyebrow){font-size:17px;line-height:1.8;color:#52645b;margin:0 0 20px}.about-contact{border-top:1px solid #dce5d8;padding-top:24px;margin-top:28px}.about-contact h2{font-size:20px;margin:0 0 12px}.about-contact a{color:#205b42;font-weight:600;overflow-wrap:anywhere}.about-contact div{margin-top:10px}@media(max-width:600px){.about-dashvanti{margin:20px 12px;padding:24px}.about-dashvanti>p:not(.eyebrow){font-size:16px}}
+.about-founder{padding:24px;margin:28px 0;background:#f5f8f2;border:1px solid #dce5d8;border-radius:16px}.about-founder.with-photo{display:grid;grid-template-columns:200px minmax(0,1fr);align-items:center;gap:24px}.founder-portrait{display:block;width:100%;height:auto;border-radius:12px}.about-founder h2{font-size:27px;line-height:1.2;margin:6px 0 8px}.about-founder p{font-size:15px;line-height:1.7;color:#52645b;margin:0 0 12px}.about-founder .founder-title{color:#205b42;font-weight:700;font-size:16px}.about-founder .eyebrow{font-size:11px;color:#205b42}.about-founder p:last-child{margin-bottom:0}@media(max-width:600px){.about-founder{padding:20px}.about-founder.with-photo{grid-template-columns:1fr}.founder-portrait{max-width:260px;margin:auto}}
+</style>
+{% endblock %}

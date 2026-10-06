@@ -1,0 +1,327 @@
+import hashlib
+import hmac
+import io
+import json
+import re
+import secrets
+import uuid
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
+from pathlib import Path
+from fastapi import HTTPException
+from PIL import Image, ImageOps, UnidentifiedImageError
+from sqlalchemy import select, func
+from zoneinfo import ZoneInfo
+from backend.config import settings
+from backend.models import Driver, User, Order, AuditEvent, Notification, now
+from backend.models_driver_partner import DriverPartner, DriverDocument, DriverVerification, DriverNominee, DriverInsurance, DriverIncident, DriverWallet, DriverEarning, DriverWithdrawal, DriverDeliveryOTP, DriverPartnerNotice, DriverDeposit
+from backend.services.admin_payment_service import cipher
+
+DOCUMENTS = {'aadhaar_front', 'aadhaar_back', 'pan', 'license', 'selfie', 'rc', 'insurance', 'puc', 'vehicle', 'nominee_aadhaar'}
+EXPIRING = {'license', 'insurance', 'puc'}
+FINAL = {'DELIVERED', 'COMPLETED', 'REJECTED', 'CANCELLED', 'CANCELED'}
+
+
+def seal(data):
+    return cipher().encrypt(json.dumps(data, default=str).encode()).decode()
+
+
+def unseal(data):
+    return json.loads(cipher().decrypt(data.encode())) if data else {}
+
+
+def digest(value):
+    return hmac.new(settings.jwt_secret.encode(), value.encode(), hashlib.sha256).hexdigest()
+
+
+def partner(db, driver_id, lock=False):
+    row = db.scalar(select(DriverPartner).where(DriverPartner.driver_id == driver_id).with_for_update()) if lock else db.get(DriverPartner, driver_id)
+    if not row:
+        if not db.get(Driver, driver_id):
+            raise HTTPException(404, 'Driver not found')
+        row = DriverPartner(driver_id=driver_id)
+        db.add(row); db.flush()
+    return row
+
+
+def notice(db, driver_id, event, body, emergency=False):
+    user = db.get(User, driver_id)
+    db.add(Notification(user_id=driver_id, kind='driver-partner', body=body[:500]))
+    from backend.services.kafka_event_service import emit
+    emit(db, 'DRIVER_PARTNER_EVENT', {'driver_id': driver_id, 'event': event, 'body': body})
+    recipients = [('EMAIL', user.email), ('SMS', user.phone)]
+    if emergency:
+        recipients.append(('SMS', unseal(partner(db, driver_id).profile).get('emergency_phone', '')))
+    for channel, recipient in recipients:
+        if recipient:
+            db.add(DriverPartnerNotice(driver_id=driver_id, event=event, body=body, channel=channel, recipient=recipient))
+
+
+def audit(db, actor, driver_id, action, notes):
+    db.add(AuditEvent(actor_id=actor.id if actor else None, action='driver-partner:'+action, target=str(driver_id), details=notes))
+
+
+def save_registration(db, user, data):
+    row = partner(db, user.id, True)
+    if row.status not in {'DRAFT', 'REJECTED', 'MORE_DOCUMENTS'} or row.account_status == 'DEACTIVATED':
+        raise HTTPException(409, 'Registration cannot be edited in its current state')
+    values = data.model_dump(mode='json')
+    if str(data.email).lower() != user.email.lower():
+        raise HTTPException(422, 'Use the email address associated with your account')
+    age = (date.today() - data.date_of_birth).days / 365.2425
+    if age < 18 or age > 100:
+        raise HTTPException(422, 'Driver must be at least 18 years old')
+    mobile = '+' + re.sub(r'\D', '', data.mobile)
+    if not re.fullmatch(r'\+91[6-9]\d{9}', mobile):
+        raise HTTPException(422, 'Enter an Indian mobile number including +91')
+    if db.scalar(select(User.id).where(User.id != user.id, User.phone.in_([mobile, mobile[1:], mobile[3:]]))):
+        raise HTTPException(409, 'Mobile number is already registered')
+    key = digest('aadhaar:' + data.aadhaar)
+    duplicate = db.scalar(select(DriverPartner.driver_id).where(DriverPartner.driver_id != user.id, (DriverPartner.aadhaar_digest == key) | (DriverPartner.mobile == mobile)))
+    if duplicate:
+        raise HTTPException(409, 'Identity or mobile number is already registered')
+    values['aadhaar_last4'] = values.pop('aadhaar')[-4:]
+    row.aadhaar_digest = key; row.mobile = mobile; row.profile = seal(values)
+    row.country = 'IN'; row.status = 'DRAFT'
+    user.phone = mobile; user.country = 'IN'; user.name = data.first_name + ' ' + data.last_name
+    driver = db.get(Driver, user.id)
+    driver.vehicle_type = data.vehicle_type; driver.vehicle_number = data.vehicle_number
+    nominee = db.get(DriverNominee, user.id)
+    details = seal({k: v for k, v in values.items() if k.startswith('nominee_')})
+    if nominee: nominee.encrypted_details = details
+    else: db.add(DriverNominee(driver_id=user.id, encrypted_details=details))
+    if not db.get(DriverInsurance, user.id): db.add(DriverInsurance(driver_id=user.id))
+    audit(db, user, user.id, 'draft-saved', '')
+    db.flush()
+    return overview(db, user.id)
+
+
+def upload(db, user, kind, file, expires_on=None):
+    row = partner(db, user.id, True)
+    if row.status not in {'DRAFT', 'MORE_DOCUMENTS', 'REJECTED'} or row.account_status == 'DEACTIVATED':
+        raise HTTPException(409, 'Documents cannot be changed while under review or approved')
+    if kind not in DOCUMENTS: raise HTTPException(422, 'Unknown document type')
+    if kind in EXPIRING and (not expires_on or expires_on <= date.today()):
+        raise HTTPException(422, 'A future document expiry date is required')
+    raw = file.file.read(5 * 1024 * 1024 + 1)
+    if len(raw) > 5 * 1024 * 1024: raise HTTPException(413, 'Maximum upload size is 5 MB')
+    try:
+        with Image.open(io.BytesIO(raw)) as image:
+            if image.width * image.height > 30000000: raise ValueError()
+            image.load(); image = ImageOps.exif_transpose(image)
+            image.thumbnail((2400, 2400))
+            buf = io.BytesIO(); image.convert('RGB').save(buf, 'JPEG', quality=90)
+            raw = buf.getvalue()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        raise HTTPException(422, 'Upload a valid JPEG, PNG or WebP image')
+    directory = Path(settings.file_root) / 'driver-private' / str(user.id)
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path = directory / (uuid.uuid4().hex + '.enc')
+    path.write_bytes(cipher().encrypt(raw)); path.chmod(0o600)
+    document = db.scalar(select(DriverDocument).where(DriverDocument.driver_id == user.id, DriverDocument.kind == kind))
+    if not document:
+        document = DriverDocument(driver_id=user.id, kind=kind, encrypted_path=str(path), mime='image/jpeg')
+        db.add(document)
+    else:
+        document.encrypted_path = str(path)
+    document.expires_on = expires_on; document.status = 'PENDING'; document.notes = ''
+    db.flush()
+    return {'id': document.id, 'kind': kind, 'status': document.status}
+
+
+def document_bytes(db, document_id, user=None):
+    document = db.get(DriverDocument, document_id)
+    if not document or (user and user.role not in {'admin', 'operations_manager'} and document.driver_id != user.id):
+        raise HTTPException(404, 'Document not found')
+    path = Path(document.encrypted_path).resolve()
+    if not path.is_relative_to((Path(settings.file_root) / 'driver-private').resolve()) or not path.is_file():
+        raise HTTPException(404, 'Document not found')
+    return cipher().decrypt(path.read_bytes())
+
+
+def verification(db, driver_id, save=False):
+    row = partner(db, driver_id)
+    values = unseal(row.profile)
+    docs = {d.kind: d for d in db.scalars(select(DriverDocument).where(DriverDocument.driver_id == driver_id))}
+    issues = []
+    if not values: issues.append('Complete the registration form')
+    for key in ('terms', 'driver_policy', 'insurance_policy', 'identity_consent'):
+        if not values.get(key): issues.append('Consent required: ' + key)
+    for kind in sorted(DOCUMENTS):
+        if kind not in docs: issues.append('Missing document: ' + kind)
+        elif kind in EXPIRING and (not docs[kind].expires_on or docs[kind].expires_on <= date.today()): issues.append('Expired document: ' + kind)
+    report = {'format_checks_passed': bool(values), 'issues': issues, 'documents_reviewed': all(d.status == 'APPROVED' for d in docs.values()) and len(docs) == len(DOCUMENTS), 'identity_authentication': 'NOT_PERFORMED', 'checked_at': now().isoformat()}
+    if save: db.add(DriverVerification(driver_id=driver_id, report=json.dumps(report)))
+    return report
+
+
+def submit(db, user):
+    row = partner(db, user.id, True)
+    if row.status not in {'DRAFT', 'MORE_DOCUMENTS', 'REJECTED'}: raise HTTPException(409, 'Application already submitted')
+    report = verification(db, user.id, True)
+    if report['issues']: raise HTTPException(422, '; '.join(report['issues']))
+    row.status = 'SUBMITTED'; db.get(Driver, user.id).online = False
+    notice(db, user.id, 'REGISTRATION_SUBMITTED', 'Your driver application has been submitted for review.')
+    return overview(db, user.id)
+
+
+def ensure_active(db, driver_id):
+    row = db.get(DriverPartner, driver_id)
+    if row:
+        if row.status != 'APPROVED' or row.account_status != 'ACTIVE': raise HTTPException(403, 'Driver account is not active')
+        if verification(db, driver_id)['issues']: raise HTTPException(403, 'Update expired driver documents before going on duty')
+        paid = db.scalar(select(DriverDeposit.id).where(DriverDeposit.driver_id == driver_id, DriverDeposit.status == 'PAID'))
+        if not paid: raise HTTPException(403, 'Pay the refundable security deposit before going on duty')
+
+
+def admin_action(db, driver_id, data, actor=None):
+    row = partner(db, driver_id, True)
+    if actor and actor.role == 'operations_manager' and data.action not in {'REVIEW', 'APPROVE', 'REJECT', 'REQUEST_DOCUMENTS', 'SUSPEND', 'WARNING'}:
+        raise HTTPException(403, 'This action requires admin access')
+    if row.account_status == 'DEACTIVATED': raise HTTPException(409, 'Permanently deactivated accounts cannot be reactivated')
+    if data.action == 'APPROVE':
+        report = verification(db, driver_id, True)
+        if row.status not in {'SUBMITTED', 'UNDER_REVIEW', 'MORE_DOCUMENTS'} or report['issues'] or not report['documents_reviewed']:
+            raise HTTPException(409, 'Review and approve every valid document before approving the application')
+        row.status = 'APPROVED'; row.driver_code = row.driver_code or f'DRV{driver_id:06d}'
+        row.account_status = 'ACTIVE'
+        notice(db, driver_id, 'DRIVER_APPROVED', 'Congratulations! Your Dashvanti Driver Account has been approved. Pay your deposit to go on duty.')
+    elif data.action == 'REACTIVATE':
+        if row.status != 'APPROVED': raise HTTPException(409, 'Approve the application first')
+        row.account_status = 'ACTIVE'
+    elif data.action in {'SUSPEND', 'DEACTIVATE'}:
+        row.account_status = 'SUSPENDED' if data.action == 'SUSPEND' else 'DEACTIVATED'
+        db.get(Driver, driver_id).online = False
+        from backend.services.redis_geo_service import remove
+        remove(driver_id)
+        notice(db, driver_id, 'ACCOUNT_SUSPENDED', data.notes)
+    elif data.action == 'WARNING':
+        notice(db, driver_id, 'WARNING', data.notes)
+    else:
+        row.status = {'REVIEW': 'UNDER_REVIEW', 'REJECT': 'REJECTED', 'REQUEST_DOCUMENTS': 'MORE_DOCUMENTS'}[data.action]
+        db.get(Driver, driver_id).online = False
+        notice(db, driver_id, data.action, data.notes)
+    row.notes = data.notes; audit(db, actor, driver_id, data.action, data.notes)
+    db.flush()
+    return overview(db, driver_id)
+
+
+def overview(db, driver_id, admin=False):
+    row = partner(db, driver_id)
+    values = unseal(row.profile)
+    values['aadhaar'] = '********' + values.get('aadhaar_last4', '')
+    values['account_number'] = '********' + values.get('account_number', '')[-4:] if values else ''
+    insurance = db.get(DriverInsurance, driver_id)
+    driver = db.get(Driver, driver_id)
+    busy = db.scalar(select(Order.id).where(Order.driver_id == driver_id, Order.status.notin_(FINAL)).limit(1))
+    user = db.get(User, driver_id)
+    return {'driver_id': driver_id, 'driver_code': row.driver_code, 'name': user.name, 'email': user.email, 'mobile': user.phone,
+        'status': row.status, 'account_status': row.account_status, 'availability': row.account_status if row.account_status in {'SUSPENDED', 'DEACTIVATED'} else ('BUSY' if busy else ('ONLINE' if driver.online else 'OFFLINE')),
+        'profile': values, 'notes': row.notes, 'verification': verification(db, driver_id),
+        'documents': [{'id': d.id, 'kind': d.kind, 'expires_on': d.expires_on, 'status': d.status, 'notes': d.notes} for d in db.scalars(select(DriverDocument).where(DriverDocument.driver_id == driver_id))],
+        'deposits': [{'id': d.id, 'payment_id': d.payment_id, 'amount': d.amount, 'currency': d.currency, 'status': d.status} for d in db.scalars(select(DriverDeposit).where(DriverDeposit.driver_id == driver_id))],
+        'insurance': {'active': bool(insurance and insurance.active and insurance.expires_on and insurance.expires_on >= date.today()), 'insurer': insurance.insurer if insurance else '', 'policy_number': insurance.policy_number if insurance else '', 'expires_on': insurance.expires_on if insurance else None,
+            'proposed_death_cover': 1000000, 'proposed_disability_cover': 1000000, 'proposed_hospitalization_cover': 200000}, 'updated_at': row.updated_at}
+
+
+def incident(db, user, data):
+    if data.order_id:
+        order = db.get(Order, data.order_id)
+        if not order or order.driver_id != user.id: raise HTTPException(404, 'Order not found')
+    row = DriverIncident(driver_id=user.id, **data.model_dump()); db.add(row); db.flush()
+    audit(db, user, user.id, 'SOS', f'Incident #{row.id}: {data.kind}')
+    notice(db, user.id, 'SOS', f'Dashvanti emergency: {user.name}, {data.kind}. Incident #{row.id}. Contact the driver: {user.phone}.', True)
+    from backend.services.kafka_event_service import emit
+    emit(db, 'DRIVER_INCIDENT', {'incident_id': row.id, 'driver_id': user.id, 'kind': data.kind})
+    return {'incident_id': row.id, 'status': row.status}
+
+
+def earning(db, order):
+    if not order.driver_id or order.status not in {'DELIVERED', 'COMPLETED'}: return
+    if db.scalar(select(DriverEarning.id).where(DriverEarning.order_id == order.id)): return
+    from backend.services.finance_service import breakdown, terms
+    from backend.services.revenue_service import refund_map
+    total = breakdown(order, refund_map(db).get(order.id, 0), terms(db, order))['driver_payout']
+    tips = min(max(Decimal(order.tip or 0), Decimal(0)), total)
+    row = DriverEarning(driver_id=order.driver_id, order_id=order.id, currency=order.currency, base_pay=total-tips, tips=tips)
+    db.add(row)
+    wallet = db.scalar(select(DriverWallet).where(DriverWallet.driver_id == order.driver_id, DriverWallet.currency == order.currency).with_for_update())
+    if not wallet:
+        wallet = DriverWallet(driver_id=order.driver_id, currency=order.currency, balance=0); db.add(wallet)
+    wallet.balance += total
+    notice(db, order.driver_id, 'ORDER_COMPLETED', f'Order #{order.id} completed. Earnings: {order.currency} {total}.')
+
+
+def earnings(db, driver_id):
+    rows = list(db.scalars(select(DriverEarning).where(DriverEarning.driver_id == driver_id).order_by(DriverEarning.id.desc()).limit(500)))
+    summaries = {}
+    user = db.get(User, driver_id)
+    zone = ZoneInfo('Asia/Kolkata' if user.country == 'IN' else 'America/Chicago')
+    local = datetime.now(zone).replace(hour=0, minute=0, second=0, microsecond=0)
+    cutoffs = {'daily': local, 'weekly': local-timedelta(days=local.weekday()), 'monthly': local.replace(day=1)}
+    amount = DriverEarning.base_pay + DriverEarning.distance_pay + DriverEarning.incentive + DriverEarning.tips
+    for period, cutoff in cutoffs.items():
+        cutoff = cutoff.astimezone(timezone.utc).replace(tzinfo=None)
+        for currency, total in db.execute(select(DriverEarning.currency, func.sum(amount)).where(DriverEarning.driver_id == driver_id, DriverEarning.created_at >= cutoff).group_by(DriverEarning.currency)):
+            summaries.setdefault(currency, {'daily': Decimal(0), 'weekly': Decimal(0), 'monthly': Decimal(0)})[period] = total
+    return {'summary': summaries, 'wallets': [{'currency': w.currency, 'balance': w.balance} for w in db.scalars(select(DriverWallet).where(DriverWallet.driver_id == driver_id))],
+        'items': [{'order_id': r.order_id, 'currency': r.currency, 'base_pay': r.base_pay, 'distance_pay': r.distance_pay, 'incentive': r.incentive, 'tips': r.tips, 'created_at': r.created_at} for r in rows],
+        'withdrawals': [{'id': r.id, 'amount': r.amount, 'currency': r.currency, 'method': r.method, 'status': r.status, 'reference': r.reference} for r in db.scalars(select(DriverWithdrawal).where(DriverWithdrawal.driver_id == driver_id).order_by(DriverWithdrawal.id.desc()).limit(100))]}
+
+
+def withdraw(db, user, data):
+    partner(db, user.id, True)
+    key = f'{user.id}:{data.request_key}'
+    existing = db.scalar(select(DriverWithdrawal).where(DriverWithdrawal.request_key == key))
+    if existing:
+        if existing.amount != data.amount or existing.currency != data.currency or existing.method != data.method: raise HTTPException(409, 'Withdrawal request key already used')
+        return {'id': existing.id, 'status': existing.status}
+    wallet = db.scalar(select(DriverWallet).where(DriverWallet.driver_id == user.id, DriverWallet.currency == data.currency).with_for_update())
+    if not wallet or wallet.balance < data.amount: raise HTTPException(409, 'Insufficient available earnings')
+    profile = unseal(partner(db, user.id).profile)
+    if not profile.get('account_number') or (data.method == 'UPI' and (data.currency != 'INR' or not profile.get('upi'))): raise HTTPException(422, 'Configure matching bank or UPI details first')
+    wallet.balance -= data.amount
+    row = DriverWithdrawal(driver_id=user.id, request_key=key, amount=data.amount, currency=data.currency, method=data.method)
+    db.add(row); db.flush()
+    audit(db, user, user.id, 'withdrawal-requested', str(row.id))
+    return {'id': row.id, 'status': row.status}
+
+
+def withdrawal_action(db, withdrawal_id, data, actor=None):
+    row = db.scalar(select(DriverWithdrawal).where(DriverWithdrawal.id == withdrawal_id).with_for_update())
+    if not row: raise HTTPException(404, 'Withdrawal not found')
+    if row.status != 'REQUESTED': raise HTTPException(409, 'Withdrawal already processed')
+    if data.status == 'REJECTED':
+        wallet = db.scalar(select(DriverWallet).where(DriverWallet.driver_id == row.driver_id, DriverWallet.currency == row.currency).with_for_update())
+        wallet.balance += row.amount
+    row.status = data.status; row.reference = data.reference
+    audit(db, actor, row.driver_id, 'withdrawal:'+data.status, data.reference)
+    return {'id': row.id, 'status': row.status, 'reference': row.reference}
+
+
+def issue_otp(db, order):
+    if db.get(DriverDeliveryOTP, order.id): return
+    code = f'{secrets.randbelow(10000):04d}'
+    db.add(DriverDeliveryOTP(order_id=order.id, digest=digest(f'{order.id}:{code}'), encrypted_code=seal(code), attempts=0, expires_at=now()+timedelta(hours=24)))
+    db.add(Notification(user_id=order.customer_id, order_id=order.id, kind='delivery-otp', body=f'Delivery OTP: {code}. Share only when your order arrives.'))
+
+
+def otp_for_customer(db, user, order_id):
+    order = db.get(Order, order_id)
+    if not order or order.customer_id != user.id: raise HTTPException(404, 'Order not found')
+    row = db.get(DriverDeliveryOTP, order_id)
+    return {'otp': unseal(row.encrypted_code) if row and not row.verified_at and row.expires_at > now() else None}
+
+
+def verify_otp(db, user, order_id, code):
+    order = db.scalar(select(Order).where(Order.id == order_id).with_for_update())
+    if not order or order.driver_id != user.id: raise HTTPException(404, 'Order not found')
+    row = db.get(DriverDeliveryOTP, order_id)
+    if not row or row.expires_at <= now() or row.attempts >= 5: raise HTTPException(409, 'Delivery OTP expired or locked; contact support')
+    if not hmac.compare_digest(row.digest, digest(f'{order_id}:{code}')):
+        row.attempts += 1; db.commit()
+        raise HTTPException(422, 'Incorrect delivery OTP')
+    row.verified_at = now()
+    from backend.services.delivery_service import transition
+    result = transition(db, user, order_id, 'DELIVERED')
+    return {'id': result.id, 'status': result.status}

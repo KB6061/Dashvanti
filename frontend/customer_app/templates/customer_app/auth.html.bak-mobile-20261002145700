@@ -1,0 +1,84 @@
+{% extends "auth.html" %}
+
+{% load static %}
+{% block content %}
+{% if auth_action == 'login' or auth_action == 'register' %}
+<section class="customer-welcome">
+  <img src="{% static 'logo.jpeg' %}" alt="Dashvanti food delivery" class="welcome-logo">
+  <p class="eyebrow">Good food. Close to home.</p>
+  <h1>Your next favorite meal<br>starts here.</h1>
+  <p>Discover local flavors, order your favorites, and enjoy delivery or pickup on your schedule.</p>
+</section>
+<dialog class="customer-auth-popup" id="customer-auth-popup" data-open-auth="{{ open_auth }}" aria-labelledby="customer-auth-title">
+  <button class="auth-popup-close" type="button" aria-label="Close">&times;</button>
+  <h2 id="customer-auth-title">Sign in</h2>
+  <div id="social-login" class="social-options" hidden>
+    {% csrf_token %}
+    <div id="google-button"></div>
+    <button id="google-placeholder" class="social-option" type="button"><span class="social-icon-google" aria-hidden="true">G</span>Continue with Google</button>
+    <button id="facebook-button" class="social-option" type="button"><span class="social-icon-facebook" aria-hidden="true">f</span>Continue with Facebook</button>
+    <div class="social-divider">or</div>
+    <button id="email-button" class="social-option" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg>Continue with Email</button>
+    <a class="social-option" href="/customer/browse"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3Z"/></svg>Continue as Guest</a>
+    <p id="social-status" role="status" aria-live="polite"></p>
+  </div>
+  <form method="post" action="/customer/login" data-no-ajax="true" data-auth-form="login" hidden>
+    {% csrf_token %}{{ customer_login_form.as_p }}
+    <button type="submit">Sign In</button>
+    <button class="email-back" type="button" id="email-back">Other sign-in options</button>
+    <a href="/customer/forgot">Forgot password?</a>
+  </form>
+  <form method="post" action="/customer/register" data-no-ajax="true" data-auth-form="register" hidden>
+    {% csrf_token %}{{ customer_register_form.as_p }}
+    <button type="submit">Sign Up</button>
+  </form>
+</dialog>
+<style>
+body:has(.customer-welcome){background:#f7f8f2}
+body:has(.customer-welcome) .site-header{height:auto;min-height:120px;justify-content:flex-end}
+body:has(.customer-welcome) .site-header .brand{display:none}
+body:has(.customer-welcome) .site-header .brand img{height:96px;max-width:190px;mix-blend-mode:multiply}
+body:has(.customer-welcome) .public-auth-actions .auth-action{background:#205b42;border-color:#205b42;color:white}
+.customer-welcome{text-align:center;max-width:800px;margin:0 auto;padding:18px 16px 60px}
+.customer-welcome .welcome-logo{width:330px;max-width:75vw;height:auto;mix-blend-mode:multiply;margin-bottom:24px}
+.customer-welcome h1{font-size:clamp(34px,5vw,60px);line-height:1.12;color:#173f30;margin:16px 0 24px}
+.customer-welcome>p:last-child{font-size:19px;line-height:1.7;max-width:590px;margin:auto;color:#52645b}
+.customer-auth-popup{border:0;border-radius:18px;width:min(460px,92vw);max-height:90dvh;padding:32px;background:#f7f8f2;color:#173f30;box-shadow:0 20px 70px #0004}
+.customer-auth-popup::backdrop{background:#0008}
+.customer-auth-popup .auth-popup-close{position:absolute;right:10px;top:6px;background:transparent;border:0;color:#173f30;font-size:28px;padding:0 8px}
+.customer-auth-popup form[hidden]{display:none}
+.customer-auth-popup form>button{width:100%;margin-bottom:14px}
+@media(max-width:480px){body:has(.customer-welcome) .site-header{padding:12px;gap:8px}body:has(.customer-welcome) .site-header .brand img{height:72px}.public-auth-actions{gap:6px}}
+</style>
+<script>
+(() => {
+  const popup = document.getElementById('customer-auth-popup');
+  function openForm(action, email = false) {
+    const social = document.getElementById('social-login');
+    social.hidden = action !== 'login' || email;
+    popup.querySelectorAll('[data-auth-form]').forEach(form => {
+      form.hidden = form.dataset.authForm !== action || (action === 'login' && !email);
+    });
+    document.getElementById('customer-auth-title').textContent = action === 'login' ? 'Welcome back' : 'Create your account';
+    if (!popup.open) popup.showModal();
+    if (email || action === 'register') popup.querySelector('form:not([hidden]) input:not([type=hidden])')?.focus();
+  }
+  document.getElementById('email-button').onclick = () => openForm('login', true);
+  document.getElementById('email-back').onclick = () => openForm('login');
+  document.addEventListener('click', event => {
+    const link = event.target.closest('.public-auth-actions a');
+    if (!link) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    openForm(link.classList.contains('sign-up') ? 'register' : 'login');
+  }, true);
+  popup.querySelector('.auth-popup-close').onclick = () => popup.close();
+  if (popup.dataset.openAuth) openForm(popup.dataset.openAuth, {% if customer_login_form.errors %}true{% else %}false{% endif %});
+})();
+</script>
+<link rel="stylesheet" href="{% static 'customer-social.css' %}?v=1">
+<script src="{% static 'customer-social.js' %}?v=1" defer></script>
+{% else %}
+{{ block.super }}
+{% endif %}
+{% endblock %}

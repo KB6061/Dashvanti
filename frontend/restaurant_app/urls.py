@@ -1,8 +1,12 @@
+from common_app.road_controls import road_controls
+from common_app.views import navigation_state
 from django.urls import path
 from common_app import views as common
 from . import views
 
 urlpatterns = [
+    path('road-controls', road_controls),
+    path('navigation-state', navigation_state),
     path('order/<int:order_id>/cancellation', common.cancellation),
     path('order-sound', common.order_sound),
     path('route-distance', common.route_distance),
@@ -19,6 +23,7 @@ urlpatterns = [
     path('orders',views.orders),
     path('order/<int:order_id>',views.order),
     path('dashboard',views.dashboard),
+    path('operations',views.operations),
     path('content',views.content),
     path('menu',views.menu),
     path('menu/<int:item_id>',views.menu),

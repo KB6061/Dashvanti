@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block content %}
+<script src="{% static 'driver-partner-admin.js' %}" defer></script>
+<link rel="stylesheet" href="{% static 'admin-layout.css' %}?v=4">
+<script src="{% static 'admin-layout.js' %}?v=single-click-3" defer></script>
+<div class="admin-workspace">
+  <button class="admin-nav-backdrop" type="button" data-admin-nav-close aria-label="Close navigation" hidden></button>
+  {% include 'admin_app/_sidebar.html' %}
+  <section class="admin-main">
+    <header class="admin-topbar">
+      <button class="admin-menu-toggle" type="button" data-admin-nav-toggle aria-controls="admin-sidebar" aria-expanded="false" aria-label="Open navigation">☰</button>
+      <form method="get" action="/admin/users"><input type="hidden" name="role" value="all"><span>⌕</span><input name="q" placeholder="Search customers, drivers, restaurants..." aria-label="Search accounts and restaurants"></form>
+      <div class="admin-system"><i></i> System Online</div>
+      <form data-no-ajax="true" method="post" action="/admin/logout">{% csrf_token %}<button type="submit">Logout</button></form>
+      <div class="admin-clock"><time data-admin-clock></time><small>Last login: <time data-admin-login="{{ request.session.admin_last_login }}">{% if request.session.admin_last_login %}{{ request.session.admin_last_login }}{% else %}First recorded login{% endif %}</time></small></div>
+    </header>
+    <div class="admin-page">{% block admin_content %}{% endblock %}</div>
+    <footer class="admin-footer"><div><strong>Dashvanti (DashV)</strong><span>© {% now "Y" %} Dashvanti · Krishna Bhandare, CEO &amp; Founder</span></div><nav aria-label="Admin footer"><a href="/about-us">About us</a><a href="mailto:support@dashvanti.com">support@dashvanti.com</a><a href="tel:+16154786018">+1 615 478 6018</a><a href="tel:+919096896318">+91 90968 96318</a></nav></footer>
+  </section>
+</div>
+<aside class="admin-chat-popup is-hidden" data-admin-chat-popup><header><strong>New support chat</strong><button type="button" data-admin-chat-minimize>−</button><button type="button" data-admin-chat-maximize>□</button></header><div data-admin-chat-list></div></aside><style>.admin-chat-popup{position:fixed;right:16px;bottom:16px;width:min(360px,calc(100vw - 32px));max-height:420px;z-index:1200;background:#fff;border:1px solid #cbdedb;border-radius:12px;box-shadow:0 18px 50px #102d1e33;padding:0;overflow:auto}.admin-chat-popup.is-hidden{display:none}.admin-chat-popup.is-minimized{height:48px;overflow:hidden}.admin-chat-popup.is-maximized{width:min(720px,calc(100vw - 32px));max-height:70vh}.admin-chat-popup header{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:12px;background:#17483f;color:#fff;position:sticky;top:0}.admin-chat-popup header button{border:0;background:transparent;color:#fff;font-size:18px}.admin-chat-popup article{padding:12px;border-bottom:1px solid #e3ebe3}.admin-chat-popup article strong,.admin-chat-popup article small{display:block}.admin-chat-popup article p{margin:6px 0}.admin-chat-popup article a{font-weight:700;color:#17483f}</style><script>(function(){const panel=document.querySelector('[data-admin-chat-popup]');if(!panel)return;const list=panel.querySelector('[data-admin-chat-list]');const render=items=>{const chats=items.filter(item=>item.kind==='order-message'&&!item.read_at);if(!chats.length)return;panel.classList.remove('is-hidden');list.replaceChildren(...chats.slice(0,8).map(item=>{const article=document.createElement('article');article.innerHTML='<strong></strong><p></p><small></small><a>Open order chat</a>';article.querySelector('strong').textContent='Order #'+(item.order_id||'');article.querySelector('p').textContent=item.body;article.querySelector('small').textContent=item.created_at;article.querySelector('a').href='/admin/order/'+item.order_id;return article;}));};const poll=()=>fetch('/admin/chat-feed',{credentials:'same-origin'}).then(r=>r.ok?r.json():[]).then(render).catch(()=>{});panel.querySelector('[data-admin-chat-minimize]').onclick=()=>panel.classList.toggle('is-minimized');panel.querySelector('[data-admin-chat-maximize]').onclick=()=>panel.classList.toggle('is-maximized');poll();setInterval(poll,5000);})();</script>
+{% endblock %}

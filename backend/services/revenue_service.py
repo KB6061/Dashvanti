@@ -2,7 +2,9 @@ import csv
 import io
 import json
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+import os
 from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException
@@ -10,8 +12,11 @@ from sqlalchemy import and_, select
 
 from backend.models import AuditEvent, Order, OrderItem, PayoutTransaction, Restaurant, SystemConfig, User, now
 
+from backend.services.finance_service import breakdown, terms
+
 CENT = Decimal('0.01')
 FINAL_STATUSES = {'DELIVERED', 'COMPLETED'}
+REPORT_TIMEZONE = ZoneInfo(os.environ.get('BUSINESS_TIMEZONE','America/Chicago'))
 
 
 def money(value):
@@ -27,24 +32,25 @@ def _start_of_week(day):
 
 
 def date_window(range_name='', start='', end=''):
-    today = date.today()
-    if start or end:
-        start_dt = datetime.fromisoformat(start).replace(hour=0, minute=0, second=0, microsecond=0) if start else datetime(1970, 1, 1)
-        end_dt = datetime.fromisoformat(end).replace(hour=23, minute=59, second=59, microsecond=999999) if end else datetime(2999, 12, 31, 23, 59, 59)
-        return start_dt, end_dt
-    if range_name == 'today':
-        return datetime.combine(today, datetime.min.time()), datetime.combine(today, datetime.max.time())
-    if range_name == 'week':
-        first = _start_of_week(today)
-        return datetime.combine(first, datetime.min.time()), datetime.combine(first + timedelta(days=6), datetime.max.time())
-    if range_name == 'month':
-        first = today.replace(day=1)
-        next_month = (first.replace(year=first.year + 1, month=1) if first.month == 12 else first.replace(month=first.month + 1))
-        return datetime.combine(first, datetime.min.time()), datetime.combine(next_month - timedelta(days=1), datetime.max.time())
-    if range_name == 'year':
-        first = today.replace(month=1, day=1)
-        return datetime.combine(first, datetime.min.time()), datetime.combine(today.replace(month=12, day=31), datetime.max.time())
-    return datetime(1970, 1, 1), datetime(2999, 12, 31, 23, 59, 59)
+    today=datetime.now(REPORT_TIMEZONE).date()
+    first,last=date(1970,1,1),date(2999,12,31)
+    try:
+        if start or end:
+            first=date.fromisoformat(start) if start else first
+            last=date.fromisoformat(end) if end else last
+        elif range_name=='today':first=last=today
+        elif range_name=='week':first=_start_of_week(today);last=first+timedelta(days=6)
+        elif range_name=='month':
+            first=today.replace(day=1)
+            following=first.replace(year=first.year+1,month=1) if first.month==12 else first.replace(month=first.month+1)
+            last=following-timedelta(days=1)
+        elif range_name=='year':first=today.replace(month=1,day=1);last=today.replace(month=12,day=31)
+    except ValueError as exc:
+        raise HTTPException(422,'Invalid report date') from exc
+    if first>last:raise HTTPException(422,'Start date must be before end date')
+    def utc(day,end=False):
+        return datetime.combine(day,datetime.max.time() if end else datetime.min.time(),REPORT_TIMEZONE).astimezone(timezone.utc).replace(tzinfo=None)
+    return utc(first),utc(last,True)
 
 
 def _config(db, key, default):
@@ -87,20 +93,19 @@ def payout_map(db):
     rows = db.scalars(select(PayoutTransaction))
     paid = {}
     for row in rows:
+        if row.status not in {'PAID','TRANSFERRED'}:
+            continue
         paid[(row.order_id, row.payee_role)] = paid.get((row.order_id, row.payee_role), Decimal('0.00')) + money(row.amount)
     return paid
 
 
 def row_amounts(order, refund_amount, rate):
-    order_amount = money(order.total)
-    commission = money(order_amount * rate)
-    driver_payout = driver_payout_amount(order)
-    restaurant_payout = money(max(order_amount - commission - driver_payout - refund_amount, Decimal('0.00')))
-    platform_profit = money(order_amount - driver_payout - restaurant_payout - refund_amount)
-    return order_amount, commission, driver_payout, restaurant_payout, platform_profit
+    values=breakdown(order,refund_amount,{'method':'percent','value':str(rate*100),'enabled':True})
+    return tuple(values[key] for key in ('order_amount','commission','driver_payout','restaurant_payout','platform_profit'))
 
 
 def _period_key(dt, period):
+    dt=dt.replace(tzinfo=timezone.utc).astimezone(REPORT_TIMEZONE)
     if period == 'day':
         return dt.strftime('%Y-%m-%d')
     if period == 'week':
@@ -124,7 +129,7 @@ def _add_bucket(target, key, profit, driver, restaurant, refund):
 
 def revenue_report(db, filters):
     start_dt, end_dt = date_window(filters.get('date_range', ''), filters.get('start_date', ''), filters.get('end_date', ''))
-    stmt = select(Order).where(and_(Order.created_at >= start_dt, Order.created_at <= end_dt)).order_by(Order.id.desc())
+    stmt = select(Order).where(Order.currency == 'USD', Order.status.not_in(['PAYMENT_PENDING', 'PAYMENT_FAILED', 'SANDBOX_PAID']), and_(Order.created_at >= start_dt, Order.created_at <= end_dt)).order_by(Order.id.desc())
     if filters.get('restaurant_id'):
         stmt = stmt.where(Order.restaurant_id == int(filters['restaurant_id']))
     if filters.get('driver_id'):
@@ -138,6 +143,12 @@ def revenue_report(db, filters):
     restaurants = {row.id: row for row in db.scalars(select(Restaurant))}
     refunds = refund_map(db)
     paid = payout_map(db)
+    reserved = dict(paid)
+    processing = {}
+    for payout in db.scalars(select(PayoutTransaction).where(PayoutTransaction.status.in_(['PENDING','UNKNOWN','REVIEW_REQUIRED']))):
+        key=(payout.order_id,payout.payee_role)
+        reserved[key]=reserved.get(key,Decimal(0))+money(payout.amount)
+        processing[key]=payout.status
     item_names = {}
     if orders:
         for item in db.scalars(select(OrderItem).where(OrderItem.order_id.in_([order.id for order in orders]))):
@@ -145,7 +156,8 @@ def revenue_report(db, filters):
     rate = commission_rate(db)
     query = (filters.get('q') or '').casefold()
     rows = []
-    totals = {'order_amount': Decimal('0'), 'platform_profit': Decimal('0'), 'commission': Decimal('0'), 'driver_payout': Decimal('0'), 'restaurant_payout': Decimal('0'), 'refund_amount': Decimal('0')}
+    totals = {'order_amount': Decimal('0'), 'platform_profit': Decimal('0'), 'commission': Decimal('0'), 'driver_payout': Decimal('0'), 'restaurant_payout': Decimal('0'), 'refund_amount': Decimal('0'), 'tax': Decimal('0'), 'service_fee': Decimal('0'), 'delivery_fee': Decimal('0'), 'tip': Decimal('0'), 'discount': Decimal('0'), 'net_revenue': Decimal('0')}
+    completed_count = 0
     buckets = {'day': {}, 'week': {}, 'month': {}, 'year': {}}
     commission_history = {}
     for order in orders:
@@ -153,23 +165,27 @@ def revenue_report(db, filters):
         customer = users.get(order.customer_id)
         driver = users.get(order.driver_id) if order.driver_id else None
         refund_amount = money(refunds.get(order.id, 0))
-        order_amount, commission, driver_payout, restaurant_payout, platform_profit = row_amounts(order, refund_amount, rate)
+        values = breakdown(order, refund_amount, terms(db,order))
+        order_amount, commission, driver_payout, restaurant_payout, platform_profit = (values[key] for key in ('order_amount','commission','driver_payout','restaurant_payout','platform_profit'))
         haystack = f'{order.id} {restaurant.name if restaurant else ""} {customer.name if customer else ""} {driver.name if driver else ""} {order.payment_mode} {order.status} {" ".join(item_names.get(order.id, []))}'.casefold()
         if query and query not in haystack:
             continue
-        for key, value in [('order_amount', order_amount), ('platform_profit', platform_profit), ('commission', commission), ('driver_payout', driver_payout), ('restaurant_payout', restaurant_payout), ('refund_amount', refund_amount)]:
-            totals[key] += value
-        for period in buckets:
-            _add_bucket(buckets[period], _period_key(order.created_at, period), platform_profit, driver_payout, restaurant_payout, refund_amount)
-        rest_key = order.restaurant_id
-        history = commission_history.setdefault(rest_key, {'restaurant_id': rest_key, 'restaurant_name': restaurant.name if restaurant else f'Restaurant #{rest_key}', 'commission': Decimal('0'), 'orders': 0})
-        history['commission'] += commission
-        history['orders'] += 1
+        if order.status in FINAL_STATUSES:
+            completed_count += 1
+            for key in totals:
+                totals[key] += values[key]
+            for period in buckets:
+                _add_bucket(buckets[period], _period_key(order.created_at, period), platform_profit, driver_payout, restaurant_payout, refund_amount)
+            rest_key = order.restaurant_id
+            history = commission_history.setdefault(rest_key, {'restaurant_id': rest_key, 'restaurant_name': restaurant.name if restaurant else f'Restaurant #{rest_key}', 'commission': Decimal('0'), 'orders': 0})
+            history['commission'] += commission
+            history['orders'] += 1
         rows.append({
             'order_id': order.id,
             'customer_name': customer.name if customer else 'Unknown',
             'restaurant_name': restaurant.name if restaurant else 'Unknown',
             'driver_name': driver.name if driver else 'Unassigned',
+            **values,
             'order_amount': order_amount,
             'platform_commission': commission,
             'driver_payout': driver_payout,
@@ -179,21 +195,25 @@ def revenue_report(db, filters):
             'payment_mode': order.payment_mode or 'Card',
             'order_status': order.status,
             'timestamp': order.created_at.isoformat(sep=' ', timespec='minutes'),
+            'driver_remaining': money(max(driver_payout-reserved.get((order.id,'driver'),0),0)),
+            'restaurant_remaining': money(max(restaurant_payout-reserved.get((order.id,'restaurant'),0),0)),
             'driver_paid': money(paid.get((order.id, 'driver'), 0)),
             'restaurant_paid': money(paid.get((order.id, 'restaurant'), 0)),
-            'driver_payment_status': 'PAID' if paid.get((order.id, 'driver'), 0) >= driver_payout and driver_payout > 0 else ('PENDING ADMIN PAY' if order.driver_id and order.status in FINAL_STATUSES and driver_payout > 0 else 'NOT READY'),
-            'restaurant_payment_status': 'PAID' if paid.get((order.id, 'restaurant'), 0) >= restaurant_payout and restaurant_payout > 0 else ('PENDING ADMIN PAY' if order.status in FINAL_STATUSES and restaurant_payout > 0 else 'NOT READY'),
-            'can_quick_pay_driver': bool(order.driver_id and order.status in FINAL_STATUSES and paid.get((order.id, 'driver'), 0) < driver_payout),
-            'can_quick_pay_restaurant': bool(order.status in FINAL_STATUSES and paid.get((order.id, 'restaurant'), 0) < restaurant_payout),
+            'driver_payment_status': processing.get((order.id,'driver')) or ('PAID' if paid.get((order.id, 'driver'), 0) >= driver_payout and driver_payout > 0 else ('PENDING ADMIN PAY' if order.driver_id and order.status in FINAL_STATUSES and driver_payout > 0 else 'NOT READY')),
+            'restaurant_payment_status': processing.get((order.id,'restaurant')) or ('PAID' if paid.get((order.id, 'restaurant'), 0) >= restaurant_payout and restaurant_payout > 0 else ('PENDING ADMIN PAY' if order.status in FINAL_STATUSES and restaurant_payout > 0 else 'NOT READY')),
+            'can_quick_pay_driver': bool(order.driver_id and order.status in FINAL_STATUSES and reserved.get((order.id, 'driver'), 0) < driver_payout),
+            'can_quick_pay_restaurant': bool(order.status in FINAL_STATUSES and reserved.get((order.id, 'restaurant'), 0) < restaurant_payout),
         })
-    total_for_chart = totals['platform_profit'] + totals['driver_payout'] + totals['restaurant_payout'] + totals['refund_amount']
+    total_for_chart = totals['platform_profit'] + totals['driver_payout'] + totals['restaurant_payout'] + totals['refund_amount'] + totals['tax']
     chart = [{
         'name': name,
         'amount': money(value),
         'percent': money((value / total_for_chart * 100) if total_for_chart else 0),
-    } for name, value in [('Platform revenue', totals['platform_profit']), ('Driver payouts', totals['driver_payout']), ('Restaurant payouts', totals['restaurant_payout']), ('Refunds', totals['refund_amount'])]]
+    } for name, value in [('Platform revenue', totals['platform_profit']), ('Driver payouts', totals['driver_payout']), ('Restaurant payouts', totals['restaurant_payout']), ('Refunds reserved', totals['refund_amount']), ('Tax payable', totals['tax'])]]
     return {
         'rows': rows,
+        'completed_orders': completed_count,
+        'report_timezone': str(REPORT_TIMEZONE),
         'totals': {key: money(value) for key, value in totals.items()},
         'summary_cards': summary_cards(db),
         'chart': chart,
@@ -213,26 +233,11 @@ def _profit_for_orders(db, range_name):
 
 
 def summary_cards(db):
-    refunds = refund_map(db)
-    rate = commission_rate(db)
-    orders = list(db.scalars(select(Order)))
+    orders=list(db.scalars(select(Order).where(Order.currency=='USD',Order.status.in_(FINAL_STATUSES))))
     def total_for(range_name):
-        start_dt, end_dt = date_window(range_name)
-        value = Decimal('0')
-        for order in orders:
-            if order.created_at < start_dt or order.created_at > end_dt:
-                continue
-            refund_amount = money(refunds.get(order.id, 0))
-            _, _, driver, restaurant, profit = row_amounts(order, refund_amount, rate)
-            value += profit
-        return money(value)
-    return {
-        'today': total_for('today'),
-        'week': total_for('week'),
-        'month': total_for('month'),
-        'year': total_for('year'),
-        'lifetime': total_for(''),
-    }
+        start,end=date_window(range_name)
+        return money(sum((order.total for order in orders if start <= order.created_at <= end), Decimal(0)))
+    return {key:total_for(period) for key,period in [('today','today'),('week','week'),('month','month'),('year','year'),('lifetime','')]}
 
 
 def quick_pay_history(db):
@@ -240,33 +245,14 @@ def quick_pay_history(db):
     rows = []
     for row in db.scalars(select(PayoutTransaction).order_by(PayoutTransaction.id.desc()).limit(200)):
         payee = users.get(row.payee_id)
-        rows.append({'id': row.id, 'order_id': row.order_id, 'payee_role': row.payee_role, 'payee_name': payee.name if payee else f'User #{row.payee_id}', 'amount': money(row.amount), 'status': row.status, 'method': row.method, 'reference': row.reference, 'created_at': row.created_at, 'paid_at': row.paid_at})
+        from backend.services.payout_service import receipt
+        details=receipt(db,row)
+        rows.append({**details, 'id': row.id, 'order_id': row.order_id, 'payee_role': row.payee_role, 'payee_name': payee.name if payee else f'User #{row.payee_id}', 'amount': money(row.amount), 'status': row.status, 'method': row.method, 'reference': row.reference, 'created_at': row.created_at, 'paid_at': row.paid_at})
     return rows
 
 
 def quick_pay(db, order_id, payee_role):
-    if payee_role not in {'driver', 'restaurant'}:
-        raise HTTPException(422, 'Invalid payout role')
-    order = db.get(Order, order_id)
-    if not order:
-        raise HTTPException(404, 'Order not found')
-    if order.status not in FINAL_STATUSES:
-        raise HTTPException(409, 'Quick-pay is available after delivery or completion')
-    refunds = refund_map(db)
-    order_amount, commission, driver_payout, restaurant_payout, _ = row_amounts(order, money(refunds.get(order.id, 0)), commission_rate(db))
-    payee_id = order.driver_id if payee_role == 'driver' else order.restaurant_id
-    amount = driver_payout if payee_role == 'driver' else restaurant_payout
-    if not payee_id or amount <= 0:
-        raise HTTPException(409, 'No payable balance')
-    paid = sum((money(row.amount) for row in db.scalars(select(PayoutTransaction).where(PayoutTransaction.order_id == order.id, PayoutTransaction.payee_role == payee_role))), Decimal('0'))
-    amount = money(amount - paid)
-    if amount <= 0:
-        raise HTTPException(409, 'Payout already completed')
-    row = PayoutTransaction(order_id=order.id, payee_role=payee_role, payee_id=payee_id, amount=amount, status='PAID', method='QUICK_PAY', reference='QP-' + uuid.uuid4().hex[:16].upper(), paid_at=now())
-    db.add(row)
-    db.add(AuditEvent(action='quick-pay-issued', target=f'order:{order.id}:{payee_role}', details=f'{amount} paid to {payee_role}'))
-    db.flush()
-    return {'id': row.id, 'order_id': row.order_id, 'payee_role': row.payee_role, 'amount': money(row.amount), 'status': row.status, 'reference': row.reference}
+    raise HTTPException(422, 'Use the payout form with amount, mode and bank confirmation')
 
 
 EXPORT_FIELDS = ['order_id','customer_name','restaurant_name','driver_name','order_amount','platform_commission','driver_payout','restaurant_payout','refund_amount','payment_mode','order_status','timestamp']

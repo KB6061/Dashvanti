@@ -26,11 +26,15 @@ def dashboard(request):
         return JsonResponse(result)
     me = call(request,'GET','/me')
     profile = me['driver']
+    application = me.get('driver_application')
+    if application and (application['status'] != 'APPROVED' or application['account_status'] != 'ACTIVE'):
+        return redirect('/driver/partner')
     form = AvailabilityForm(request.POST or None,initial=profile)
     if request.method=='POST' and form.is_valid():
         call(request,'PUT','/driver/profile',form.cleaned_data)
         return redirect(request.path)
     available = call(request,'GET','/delivery/available')
+    queued=call(request,'GET','/delivery/queue')
     driver_orders = call(request,'GET','/orders')
     active_orders = []
     completed_orders = []
@@ -60,6 +64,7 @@ def dashboard(request):
         'me': me,
         'profile': profile,
         'available': available,
+        'queued':queued,
         'map_markers': map_markers,
         'active_orders': active_orders[:3],
         'completed_orders': completed_orders[:4],
@@ -73,8 +78,12 @@ def dashboard(request):
 @protected
 @require_http_methods(['POST'])
 def accept(request,order_id):
-    call(request,'POST',f'/delivery/{order_id}/accept')
-    return redirect(f'/driver/order/{order_id}')
+    result=call(request,'POST',f'/delivery/{order_id}/accept')
+    queued=bool(result.get('queued'))
+    target='/driver/dashboard#upcoming-order' if queued else f'/driver/order/{order_id}'
+    if request.headers.get('X-Requested-With'):
+        return JsonResponse({'queued':queued,'redirect_url':target,'order_id':order_id})
+    return redirect(target)
 
 @protected
 @require_http_methods(['POST'])
@@ -110,3 +119,9 @@ def presence(request):
 def payments(request):
     data = call(request, 'GET', '/driver/payments')
     return render(request, 'driver_app/payments.html', {'payments': data['rows'], 'summary': data['summary'], 'title': 'Driver payments'})
+
+@protected
+@require_http_methods(['POST'])
+def reject(request, order_id):
+    call(request, 'POST', f'/delivery/{order_id}/reject')
+    return redirect('/driver/dashboard')

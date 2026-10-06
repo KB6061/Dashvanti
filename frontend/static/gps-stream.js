@@ -1,0 +1,72 @@
+(() => {
+ const role=document.body.classList.contains('admin-portal')?'admin':document.body.classList.contains('driver-portal')?'driver':document.body.classList.contains('restaurant-portal')?'restaurant':'customer';
+ if(!document.querySelector('.portal-logout-button,[data-order-alerts]') && role!=='admin')return;
+ if(role==='admin' && !document.querySelector('.portal-logout-button,form[action="/admin/logout"],[data-map-online-drivers]'))return;
+ let disposed=false;
+ const channels=new Set();
+ class Channel{
+  constructor(orderId=null){this.orderId=orderId;this.delay=1000;this.ready=false;this.connecting=false;this.socket=null;channels.add(this);void this.connect();}
+  async connect(){
+   if(disposed || this.connecting)return;this.connecting=true;
+   const generation=this.generation=(this.generation||0)+1;
+   try{
+    const csrf=document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+    const res=await fetch('/'+role+'/gps-ticket'+(this.orderId?'?order_id='+this.orderId:''),{method:'POST',credentials:'same-origin',headers:{'X-CSRFToken':csrf||''},signal:window.dashvantiTimeoutSignal(10000)});
+    if(res.status===401 || res.status===403 || res.status===409){this.stopped=true;return;}
+    if(!res.ok)throw Error('GPS stream unavailable');
+    const data=await res.json();
+    if(disposed||this.stopped||generation!==this.generation)return;
+    const path=this.orderId?'/ws/customer/'+this.orderId:role==='admin'?'/ws/admin/orders':role==='driver'?'/ws/driver/'+data.driver_id:role==='restaurant'?'/ws/restaurant/'+data.user_id:'/ws/customer';
+    const socket=new WebSocket((location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+path);this.socket=socket;
+    socket.onopen=()=>{this.lastMessage=Date.now();socket.send(JSON.stringify({ticket:data.ticket}));};
+    socket.onmessage=event=>{
+     this.lastMessage=Date.now();
+     const data=JSON.parse(event.data);
+     if(data.type==='ready'){this.ready=true;this.delay=1000;window.dispatchEvent(new CustomEvent('dashvanti:gps-connected',{detail:{orderId:this.orderId}}));if(this.latest)this.send(this.latest);return;}
+     if(data.type==='ping'){socket.send(JSON.stringify({type:'pong'}));return;}
+     if(data.type==='ack'){window.dispatchEvent(new CustomEvent('dashvanti:gps-status',{detail:{status:'live'}}));return;}
+     if(data.type==='error'){window.dispatchEvent(new CustomEvent('dashvanti:gps-status',{detail:{status:data.detail}}));return;}
+     if(data.type==='order_update'){
+      const version=Number(data.event_id)||0;
+      window.dashvantiOrderVersions=window.dashvantiOrderVersions||{};
+      if(version && version<=(window.dashvantiOrderVersions[data.order_id]||0))return;
+      window.dashvantiOrderVersions[data.order_id]=version;
+      window.dispatchEvent(new CustomEvent('dashvanti:order-update',{detail:data}));return;
+     }
+     if(data.event==='driver_arriving'){window.dispatchEvent(new CustomEvent('dashvanti:driver-arriving',{detail:data}));return;}
+     if(data.type==='navigation'){
+      window.dispatchEvent(new CustomEvent('dashvanti:navigation-update',{detail:data}));return;
+     }
+     if(data.type==='driver_location' || data.type==='driver_offline'){
+      if(data.timestamp && data.timestamp<=(this.lastTimestamp?.[data.driver_id]||0))return;
+      this.lastTimestamp=this.lastTimestamp||{};this.lastTimestamp[data.driver_id]=data.timestamp||0;
+      window.dispatchEvent(new CustomEvent('dashvanti:gps-stream',{detail:{...data,updated_at:data.timestamp?new Date(data.timestamp).toISOString():null}}));
+     }
+    };
+    socket.onclose=()=>{this.ready=false;this.schedule();};socket.onerror=()=>socket.close();
+    this.expiry=setTimeout(()=>socket.close(),Math.max(1000,(data.expires_in-30)*1000));
+   }catch(_){if(generation===this.generation)this.schedule();}finally{if(generation===this.generation)this.connecting=false;}
+  }
+  reconnect(){
+   if(disposed||this.stopped)return;
+   this.generation=(this.generation||0)+1;this.connecting=false;this.ready=false;
+   clearTimeout(this.retry);clearTimeout(this.expiry);
+   if(this.socket){this.socket.onclose=null;this.socket.close();this.socket=null;}
+   this.delay=1000;void this.connect();
+  }
+  schedule(){clearTimeout(this.expiry);clearTimeout(this.retry);if(disposed||this.stopped)return;this.retry=setTimeout(()=>this.connect(),this.delay+Math.random()*500);this.delay=Math.min(30000,this.delay*2);}
+  send(value){this.latest=value;if(!this.ready || this.socket?.readyState!==WebSocket.OPEN)return false;if(Date.now()-(this.lastSent||0)<3800)return false;this.lastSent=Date.now();this.socket.send(JSON.stringify(value));return true;}
+  close(){this.stopped=true;clearTimeout(this.retry);clearTimeout(this.expiry);this.socket?.close();channels.delete(this);}
+ }
+ let driver;
+ window.dashvantiGPS={send(value){driver=driver||new Channel();return driver.send(value);}};
+ function viewers(){
+  if(role==='driver')driver=new Channel();
+  else {new Channel();if(role!=='admin')document.querySelectorAll('[data-live-tracking]:not([hidden])').forEach(host=>new Channel(Number(host.dataset.orderId)));}
+ }
+ viewers();
+ const resume=()=>{if(disposed||document.hidden)return;channels.forEach(channel=>{if(!channel.connecting&&(!channel.ready||channel.socket?.readyState!==WebSocket.OPEN||Date.now()-(channel.lastMessage||0)>45000))channel.reconnect();});};
+ window.addEventListener('online',resume);window.addEventListener('focus',resume);document.addEventListener('visibilitychange',resume);setInterval(resume,15000);
+ window.addEventListener('pagehide',()=>{disposed=true;channels.forEach(channel=>channel.close());});
+ window.addEventListener('pageshow',event=>{if(event.persisted){disposed=false;driver=null;viewers();}});
+})();

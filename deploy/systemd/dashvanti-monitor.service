@@ -1,0 +1,10 @@
+[Unit]
+Description=Dashvanti HTTP and resource monitoring
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/libexec/dashvanti-monitor.py
+StateDirectory=dashvanti-monitor
+TimeoutStartSec=120
+UMask=0022

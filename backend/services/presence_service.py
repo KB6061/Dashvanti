@@ -13,18 +13,24 @@ def current(db, user):
         raise HTTPException(404, 'Driver not found')
     config = db.get(SystemConfig, f'driver_presence:{user.id}')
     mode = 'ONLINE' if driver.online else ('BREAK' if config and config.value == 'BREAK' else 'HOME')
-    location = db.get(DriverLocation, user.id)
-    fresh = location and (now() - location.updated_at).total_seconds() <= 120
+    from backend.services.redis_geo_service import location as live_location
+    location = live_location(db,user.id)
     return {'mode': mode, 'online': bool(driver.online), 'active_delivery': bool(active_delivery(db, user.id)),
-            'location': {'latitude': location.latitude, 'longitude': location.longitude, 'heading': location.heading} if fresh else None}
+            'location': {'latitude': location.latitude, 'longitude': location.longitude, 'heading': location.heading, 'speed': location.speed, 'updated_at': location.updated_at.isoformat() if location and location.updated_at else None} if location else None}
 
 def update(db, user, mode):
+    if mode == 'ONLINE':
+        from backend.services.driver_partner_service import ensure_active
+        ensure_active(db, user.id)
     driver = db.scalar(select(Driver).where(Driver.id == user.id).with_for_update())
     if not driver:
         raise HTTPException(404, 'Driver not found')
     if mode == 'HOME' and active_delivery(db, user.id):
         raise HTTPException(409, 'Complete your active delivery before going home')
     driver.online = mode == 'ONLINE'
+    if not driver.online:
+        from backend.services.redis_geo_service import remove
+        remove(user.id)
     key = f'driver_presence:{user.id}'
     config = db.get(SystemConfig, key)
     if config:

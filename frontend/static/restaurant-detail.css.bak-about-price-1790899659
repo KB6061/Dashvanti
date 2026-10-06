@@ -1,0 +1,81 @@
+
+.restaurant-banner{width:100%;height:240px;overflow:hidden;border-radius:16px;background:linear-gradient(115deg,#194632,#608468);display:grid;place-items:center}
+.restaurant-banner img{width:100%;height:100%;object-fit:cover}.restaurant-banner h1{color:white}
+.restaurant-title-search{display:flex;justify-content:space-between;align-items:center;gap:24px;margin:24px 0}
+.restaurant-title-search h1{font-size:28px;margin:0}.restaurant-title-search label{width:min(360px,100%)}
+.restaurant-store-layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:30px}
+.restaurant-store-info h2,.restaurant-store-info h3{font-size:18px}.restaurant-store-info p{font-size:14px}
+.restaurant-store-info nav{display:grid;gap:8px}
+.restaurant-store-info nav button{background:transparent;color:#173f30;text-align:left;font-size:14px;padding:6px}
+.restaurant-store-menu{min-width:0}
+.store-featured>header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.store-featured>header>div{display:flex;gap:8px}
+.store-featured [data-featured-arrow]{border:0;border-radius:50%;background:#e9eee5;color:#173f30;width:32px;height:32px;padding:0;font-size:24px}
+.store-featured-rail{display:grid;grid-auto-flow:column;grid-auto-columns:170px;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding-bottom:14px}
+.store-featured-rail .customer-menu-card{scroll-snap-align:start;border:0;background:transparent}
+.store-featured-rail .customer-menu-picture{height:170px;border-radius:12px;overflow:hidden}
+.store-featured-rail .customer-menu-picture img{width:100%;height:100%;object-fit:contain}
+.store-featured-rail .customer-menu-details{padding:10px 0}
+.store-featured-rail .customer-menu-details>p,.store-featured-rail .customer-menu-diet,.store-featured-rail label{display:none}
+.store-featured-rail h3{font-size:15px}
+.store-featured-rail .customer-menu-order-row{display:flex;align-items:center;justify-content:space-between}
+.store-featured-rail button{border-radius:50%;font-size:12px;padding:8px}
+.restaurant-store-menu [hidden]{display:none!important}
+.store-info-popup{border:0;border-radius:16px;width:min(560px,94vw);max-height:92dvh;padding:22px;color:#173f30}
+.store-info-popup::backdrop{background:#0008}.store-info-close{float:right;border:0;background:transparent;color:#173f30;font-size:28px;padding:0 6px}
+#store-info-map{width:100%;height:260px;margin:16px 0}
+@media(max-width:760px){.restaurant-store-layout{grid-template-columns:1fr}.restaurant-title-search{flex-direction:column;align-items:stretch}.restaurant-title-search label{width:100%}.restaurant-store-info nav{display:flex;overflow:auto}.restaurant-banner{height:185px}.store-featured-rail{grid-auto-columns:155px}}
+
+.store-featured-rail .customer-menu-card{position:relative}
+.store-featured-rail .customer-menu-order-row button{position:absolute;right:8px;top:130px;width:32px;height:32px;background:white;color:#173f30;border:1px solid #dce4d8;padding:0;font-size:0;box-shadow:0 2px 7px #0002}
+.store-featured-rail .customer-menu-order-row button::after{content:'+';font-size:25px;line-height:30px}
+
+.restaurant-detail{background:#fff;color:#18251e;padding:12px 16px 30px}
+.restaurant-banner{position:relative;height:clamp(175px,19vw,285px);border-radius:12px}
+.store-brand{position:absolute;top:20px;left:20px;width:68px;height:68px;border-radius:50%;border:3px solid white;background:#fff4dc;display:grid;place-items:center;font-size:28px;font-weight:800;overflow:hidden;box-shadow:0 2px 9px #0002}
+.restaurant-banner .store-brand img{object-fit:contain}
+.restaurant-title-search{margin:16px 0;gap:16px}.restaurant-title-search h1{font-size:24px}
+.restaurant-title-search input{border-radius:24px;background:#f7f7f7;border:1px solid #d7dcd7;min-height:40px;margin:0}
+.restaurant-store-layout{grid-template-columns:190px minmax(0,1fr);gap:24px}
+.restaurant-store-info{align-self:start;position:sticky;top:calc(var(--customer-nav-height,90px) + 12px);max-height:calc(100dvh - var(--customer-nav-height,90px) - 24px);overflow:auto}
+.restaurant-store-info h2,.restaurant-store-info h3{font-size:16px;margin:0 0 10px}
+.restaurant-store-info p{font-size:13px;margin:8px 0;line-height:1.5}
+.restaurant-store-info [data-store-more]{width:100%;background:white;color:#18251e;border:1px solid #dedede;border-radius:22px;padding:7px;margin:8px 0}
+.restaurant-store-info nav button{white-space:normal;border-radius:5px;color:#555;padding:10px 8px}
+.restaurant-store-info nav button.is-active{border-left:4px solid #205b42;color:#172e22;font-weight:700}
+.store-ordering{display:flex;align-items:center;gap:18px;border:1px solid #e1e5e0;border-radius:10px;padding:16px;margin-bottom:18px;min-height:78px}
+.store-mode{display:flex;background:#f2f3f2;padding:3px;border-radius:25px}
+.store-mode button{border:0;border-radius:24px;background:transparent;color:#243b2b;padding:7px 16px;font-size:13px}
+.store-mode button[aria-pressed=true]{background:white;box-shadow:0 1px 4px #0003}
+.store-pricing{margin-left:auto;background:#f5f3fc;color:#243b2b;border:0;border-radius:8px;font-size:13px;padding:10px 20px}
+.store-pricing span,.store-time span{display:block;font-size:12px;font-weight:400;margin-top:4px}
+.store-time{text-align:center;padding:0 16px;border-left:1px solid #eee;font-size:13px}
+.store-deals{margin-bottom:22px}
+.store-deals>header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.store-deals h2,.store-featured h2{font-size:20px;margin:0}
+.store-deals header>div{display:flex;gap:6px}
+.store-deals header button{background:#f3f4f2;color:#203929;border:0;border-radius:20px;padding:6px 12px}
+.store-deals-rail{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(250px,45%);gap:12px;overflow:auto;scrollbar-width:none}
+.store-deals-rail.expanded{grid-auto-flow:row;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.store-offer{border:1px solid #e1e5e0;border-radius:10px;padding:12px 16px;font-size:13px}
+.store-offer summary{cursor:pointer}.store-offer summary strong{color:#206043}
+.store-offer summary span{display:block;margin-top:5px;color:#57655c}
+.store-no-deals{font-size:13px;color:#667269;margin:4px 0}
+.store-featured-rail{grid-auto-columns:clamp(145px,14vw,190px);gap:14px}
+.store-featured-rail .customer-menu-picture{height:auto;aspect-ratio:1;border-radius:12px;background:#f6f7f4}
+.store-featured-rail .customer-menu-order-row button{top:auto;bottom:auto;inset-block-start:calc(clamp(145px,14vw,190px) - 40px)}
+.store-featured-rail h3{font-size:14px;line-height:1.45;margin:0 0 5px}
+.store-featured-rail .customer-menu-details{padding:8px 0}
+.store-featured-rail .customer-menu-order-row strong{font-size:13px}
+.menu-category,#restaurant-featured,#store-reviews{scroll-margin-top:calc(var(--customer-nav-height,90px) + 20px)}
+@media(max-width:760px){.restaurant-detail{padding:8px}.restaurant-store-layout{grid-template-columns:1fr;gap:16px}.restaurant-store-info{position:static;max-height:none}.restaurant-store-info nav{display:flex;gap:4px}.restaurant-store-info nav button{white-space:nowrap}.restaurant-title-search{gap:12px}.store-ordering{flex-wrap:wrap;gap:12px;padding:12px}.store-pricing{padding:8px;margin-left:0}.store-time{padding:0 8px}.store-deals-rail{grid-auto-columns:85%}.store-brand{width:56px;height:56px;top:12px;left:12px}}
+
+.restaurant-detail .customer-menu-card .menu-add-plus{background:transparent!important;border:0!important;border-radius:0;box-shadow:none!important;color:#172e22;font-size:28px;line-height:1;width:36px;height:36px;padding:0}
+.restaurant-detail .customer-menu-card .menu-add-plus::after{content:none}
+.restaurant-detail .customer-menu-card .menu-add-plus:hover{color:#ed891f;transform:scale(1.12)}
+.restaurant-category-rail{margin-top:14px}.restaurant-detail .menu-category{margin:26px 0}
+.restaurant-detail .menu-category-head{display:flex;justify-content:space-between;align-items:center}
+.menu-category-head>div{display:flex;gap:6px}
+.menu-category-head button{background:#f2f4f1;color:#203929;border:0;border-radius:50%;width:32px;height:32px;padding:0;font-size:24px}
+.store-review-section{margin:24px 0}.store-review-section h2{font-size:20px}
+.store-review-section blockquote{display:inline-block;vertical-align:top;width:min(280px,100%);margin:8px 10px 8px 0;padding:16px;background:#f6f7f5;border:0;border-radius:10px}

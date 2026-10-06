@@ -2,6 +2,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, func, or_
 from backend.models import Restaurant, MenuItem, Rating, Review, Order, User, File, RestaurantPresentation
 from backend.services.kafka_event_service import emit
+from backend.services.restaurant_location_service import restrict, metadata, distance_miles, configure_restaurant
 
 
 def _clock_label(value):
@@ -12,8 +13,8 @@ def _clock_label(value):
     suffix = 'AM' if hour < 12 else 'PM'
     return f'{hour % 12 or 12}:{minute:02d} {suffix}'
 
-def browse(db, q='', cuisine='', veg=False, rating=0, delivery_time=240, page=1, page_size=24):
-    stmt = select(Restaurant).where(Restaurant.delivery_minutes <= delivery_time)
+def browse(db, q='', cuisine='', veg=False, rating=0, delivery_time=240, page=1, page_size=24, scope=None):
+    stmt = restrict(select(Restaurant).where(Restaurant.delivery_minutes <= delivery_time), scope)
     query = q.strip().lower()
     term = f'%{query}%' if query else ''
     if cuisine:
@@ -42,7 +43,7 @@ def browse(db, q='', cuisine='', veg=False, rating=0, delivery_time=240, page=1,
     ))
     restaurant_ids = [row.id for row in restaurant_rows]
     if not restaurant_ids:
-        return {'items': [], 'meta': {'page': page, 'page_size': page_size, 'total': total_count}}
+        return {'items': [], 'meta': {'page': page, 'page_size': page_size, 'total': total_count, **metadata(scope)}}
 
     rating_rows = db.execute(
         select(Order.restaurant_id, func.avg(Rating.restaurant), func.count(Rating.id))
@@ -130,6 +131,8 @@ def browse(db, q='', cuisine='', veg=False, rating=0, delivery_time=240, page=1,
             'name': row.name,
             'description': row.description or '',
             'address': row.address or '',
+            'country': row.country, 'latitude': row.latitude, 'longitude': row.longitude,
+            'distance_miles': distance_miles(row,scope),
             'cuisine': row.cuisine,
             'kind': row.kind,
             'is_open': row.is_open,
@@ -149,18 +152,19 @@ def browse(db, q='', cuisine='', veg=False, rating=0, delivery_time=240, page=1,
         })
     return {
         'items': results,
-        'meta': {'page': page, 'page_size': page_size, 'total': total_count},
+        'meta': {'page': page, 'page_size': page_size, 'total': total_count, **metadata(scope)},
     }
 
 
-def search_suggestions(db, q, limit=12):
+def search_suggestions(db, q, limit=12, scope=None):
+    allowed = restrict(select(Restaurant.id),scope)
     query = q.strip().lower()
     if not query:
         return []
     term = f'%{query}%'
     suggestions = []
     restaurants = list(db.scalars(
-        select(Restaurant).where(or_(
+        select(Restaurant).where(Restaurant.id.in_(allowed),or_(
             func.lower(Restaurant.name).like(term),
             func.lower(Restaurant.cuisine).like(term),
         )).limit(limit * 2)
@@ -176,7 +180,7 @@ def search_suggestions(db, q, limit=12):
             })
     cuisines = list(db.scalars(
         select(Restaurant.cuisine)
-        .where(func.lower(Restaurant.cuisine).like(term))
+        .where(Restaurant.id.in_(allowed),func.lower(Restaurant.cuisine).like(term))
         .distinct()
         .limit(limit)
     ))
@@ -191,6 +195,7 @@ def search_suggestions(db, q, limit=12):
         select(MenuItem, Restaurant.name)
         .join(Restaurant, Restaurant.id == MenuItem.restaurant_id)
         .where(
+            Restaurant.id.in_(allowed),
             MenuItem.available == True,
             or_(
                 func.lower(MenuItem.name).like(term),
@@ -242,8 +247,11 @@ def detail(db, restaurant_id):
 
 def update(db, user, data):
     row = db.get(Restaurant, user.id)
-    for key, value in data.model_dump().items():
-        setattr(row, key, value)
+    previous_address=row.address
+    values=data.model_dump()
+    for key, value in values.items():
+        if key not in {"country","latitude","longitude"}:setattr(row, key, value)
+    configure_restaurant(row,values,previous_address)
     return row
 
 def update_hours(db, user, data):

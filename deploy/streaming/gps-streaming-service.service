@@ -1,0 +1,20 @@
+[Unit]
+Description=Dashvanti GPS WebSockets and Kafka consumer
+After=network-online.target redis-server.service kafka-server.service postgresql.service
+Requires=redis-server.service kafka-server.service
+StartLimitIntervalSec=0
+
+[Service]
+User=krishna
+Group=krishna
+WorkingDirectory=/home/krishna/food
+ExecStart=/bin/bash /home/krishna/food/deploy/streaming/run-streaming.sh
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+NoNewPrivileges=true
+UMask=0077
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

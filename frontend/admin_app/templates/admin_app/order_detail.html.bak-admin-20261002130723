@@ -1,0 +1,37 @@
+
+{% extends 'admin_app/admin_base.html' %}
+{% block admin_content %}
+{% if order.status != "DELIVERED" and order.status != "CANCELLED" and order.status != "REJECTED" %}<button type="button" data-cancel-order="/admin/order/{{ order.id }}/cancellation">Cancel order / full refund override</button>{% endif %}
+<form method="post" style="display:flex;gap:8px;align-items:center;margin:12px 0">{% csrf_token %}<input type="hidden" name="admin_action" value="status"><select name="status"><option value="PLACED">Placed</option><option value="ACCEPTED">Accepted</option><option value="PREPARING">Preparing</option><option value="READY_FOR_PICKUP">Ready for pickup</option><option value="DELIVERED">Delivered</option><option value="CANCELLED">Cancelled</option></select><button>Update status</button></form><form method="post" style="margin:12px 0">{% csrf_token %}<input type="hidden" name="admin_action" value="delete"><button>Cancel/delete order</button></form>
+<a href="/admin/orders">← Orders</a><h1>Order #{{ order.id }}</h1>
+<div class="order-table-wrap"><table class="order-data-table"><caption>Order details</caption><tbody>
+<tr><th>Status</th><td>{{ order.status|title }}</td><th>Placed</th><td><time data-order-date datetime="{{ order.created_at|date:'c' }}">{{ order.created_at }}</time></td></tr>
+<tr><th>Restaurant</th><td>{{ restaurant.name }}</td><th>Customer</th><td>{{ customer.name }} · {{ customer.phone|default:'—' }}</td></tr>
+<tr><th>Delivery Partner</th><td>{{ driver.name|default:'Unassigned' }}</td><th>Mode</th><td>{{ order.mode|title }}</td></tr>
+<tr><th>Restaurant address</th><td>{{ restaurant.address }}</td><th>Delivery address</th><td>{{ order.address }}</td></tr>
+</tbody></table></div>
+<div class="order-table-wrap"><table class="order-data-table"><caption>Menu items</caption><thead><tr><th>Item</th><th>Quantity</th><th>Unit price</th><th>Instructions</th></tr></thead><tbody>
+{% for item in items %}<tr><td>{{ item.name }}</td><td>{{ item.quantity }}</td><td>&#36;{{ item.price|floatformat:2 }}</td><td>{{ item.special_instructions|default:'—' }}</td></tr>{% endfor %}
+</tbody></table></div>
+<div class="order-table-wrap"><table class="order-data-table"><caption>Charges</caption><tbody>
+<tr><th>Tax</th><td>&#36;{{ order.tax|floatformat:2 }}</td></tr><tr><th>Service fee</th><td>&#36;{{ order.service_fee|floatformat:2 }}</td></tr>
+<tr><th>Delivery fee</th><td>&#36;{{ order.delivery_fee|floatformat:2 }}</td></tr><tr><th>Discount</th><td>&#36;{{ order.discount|floatformat:2 }}</td></tr>
+<tr><th>Tip</th><td>&#36;{{ order.tip|floatformat:2 }}</td></tr><tr><th>Total</th><td>&#36;{{ order.total|floatformat:2 }}</td></tr>
+</tbody></table></div>
+<div class="order-table-wrap"><table class="order-data-table"><caption>Status history</caption><thead><tr><th>Status</th><th>Local date and time</th></tr></thead><tbody>
+{% for event in history %}<tr><td>{{ event.status|title }}</td><td><time data-order-date datetime="{{ event.created_at|date:'c' }}">{{ event.created_at }}</time></td></tr>{% empty %}<tr><td colspan="2">No status updates recorded.</td></tr>{% endfor %}
+</tbody></table></div>
+
+<section class="card admin-order-chat"><h2>Order chat</h2><div class="message-list">{% for message in chat_messages %}<article><strong>{{ message.user_role|title }} · {{ message.user_name }} · Order #{{ message.order_id }}</strong><p>{{ message.body }}</p><small>{{ message.created_at }}</small></article>{% empty %}<p>No messages yet.</p>{% endfor %}</div><form method="post">{% csrf_token %}<input type="hidden" name="admin_action" value="chat"><textarea name="body" required maxlength="2000" placeholder="Reply to customer, restaurant, or driver"></textarea><button>Send reply</button></form></section>
+
+<section class="card" data-live-refresh><h2>Online drivers</h2><a href="/admin/order/{{ order.id }}">Refresh availability</a><div class="order-table-wrap"><table class="order-data-table"><thead><tr><th>Driver</th><th>Availability</th><th>GPS</th><th>Distance to pickup</th></tr></thead><tbody>
+{% for online in online_drivers %}<tr><td>{{ online.name }} · {{ online.phone|default:'—' }}</td><td>{{ online.availability }}</td><td>{{ online.gps }}</td><td>{% if online.candidate %}{{ online.candidate.distance_miles }} mi · {{ online.candidate.drive_minutes }} min{% if forloop.first %} · Nearest{% endif %}{% else %}Not eligible for this pickup{% endif %}</td></tr>{% empty %}<tr><td colspan="4">No drivers online.</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% if can_reassign and not order.driver_id %}<form method="post">{% csrf_token %}<input type="hidden" name="admin_action" value="assign-nearest"><button type="submit">Assign nearest driver</button></form>{% endif %}
+{% if can_reassign %}<section class="card"><h2>Assign a delivery partner</h2><p>Admin can assign any registered driver. Distance, online status, GPS availability, and current workload do not restrict manual assignment.</p>
+{% if assignable_drivers %}<form method="post">{% csrf_token %}<input type="hidden" name="expected_driver_id" value="{{ order.driver_id|default_if_none:'' }}">
+<label>Driver<select name="driver_id" required>{% for candidate in assignable_drivers %}<option value="{{ candidate.id }}">{{ candidate.name }} · {% if candidate.online %}Online{% else %}Offline{% endif %}{% if candidate.busy %} · Busy{% endif %} · {{ candidate.phone }}</option>{% endfor %}</select></label>
+<label>Reason<input name="reason" required minlength="3" maxlength="250" placeholder="Assign available driver"></label><button type="submit">Assign driver</button></form>
+{% else %}<p>No registered drivers available.</p>{% endif %}
+</section>{% endif %}
+{% endblock %}

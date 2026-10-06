@@ -1,0 +1,141 @@
+(() => {
+ const host=document.querySelector('[data-live-tracking][data-tracking-role="driver"]');
+ if(!host)return;
+
+ const dialog=document.createElement('dialog');
+ dialog.className='driver-navigation-dialog';
+ dialog.innerHTML='<button type="button" data-close aria-label="Close">×</button><h2>Navigation</h2><p data-destination></p><p data-route-summary>Start navigation for spoken directions. Sound is controlled in the navigation app.</p><p data-error role="status"></p><a class="driver-go" data-google-navigation target="_blank" rel="noopener">Start navigation</a><button type="button" data-start>Show route in portal</button>';
+ document.body.append(dialog);
+
+ const map=host.querySelector('[data-google-map]');
+ const navButton=document.createElement('button');
+ navButton.type='button';
+ navButton.className='driver-floating-navigate';
+ navButton.textContent='Navigate';
+ navButton.hidden=true;
+ document.body.append(navButton);
+ const activate=()=>{host.classList.add('driver-navigation-active');window.dispatchEvent(new Event('dashvanti:navigation-start'));host.scrollIntoView({behavior:'smooth',block:'start'});const directions=host.querySelector('details');if(directions)directions.open=true;if(window.google?.maps&&map?.dashvantiMapState)google.maps.event.trigger(map.dashvantiMapState.map,'resize');};
+ navButton.onclick=()=>{updateGoogleNavigation();if(!dialog.open)dialog.showModal();};
+ dialog.addEventListener('close',()=>{navButton.hidden=false;});
+
+ let phase='',current;
+ const googleNavigation=dialog.querySelector('[data-google-navigation]');
+ const updateGoogleNavigation=()=>{
+  const customerLeg=['PICKED_UP','ON_THE_WAY_TO_CUSTOMER','ARRIVED_AT_CUSTOMER'].includes(current?.driver_status);
+  const destination=(customerLeg?current?.destination:current?.restaurant?.address)?.trim();
+  if(!destination){
+   googleNavigation.removeAttribute('href');
+   dialog.querySelector('[data-error]').textContent='Destination address is unavailable.';
+   return;
+  }
+  const url=new URL('https://www.google.com/maps/dir/');
+  url.search=new URLSearchParams({api:'1',destination,travelmode:'driving',dir_action:'navigate'}).toString();
+  googleNavigation.href=url.href;
+  dialog.querySelector('[data-error]').textContent='';
+ };
+ googleNavigation.addEventListener('click',event=>{
+  if(!googleNavigation.hasAttribute('href')){event.preventDefault();return;}
+  activate();
+  voiceEnabled=false;
+  window.speechSynthesis?.cancel();
+  dialog.close();
+ });
+ const shown=new Set();
+
+ let voiceEnabled=false,lastSpoken='',navSteps=[],spokenStepIndex=-1,lastPosition=null;
+ const speak=(message)=>{
+  if(!voiceEnabled||!message||!('speechSynthesis' in window))return;
+  if(message===lastSpoken)return;
+  lastSpoken=message;
+  window.speechSynthesis.cancel();
+  const utterance=new SpeechSynthesisUtterance(message);
+  utterance.rate=0.95;
+  utterance.pitch=1;
+  utterance.volume=1;
+  window.speechSynthesis.speak(utterance);
+ };
+ const distanceMeters=(a,b)=>{
+  if(!a||!b)return Infinity;
+  const r=Math.PI/180;
+  const lat1=a.latitude*r,lat2=b.lat*r;
+  const dlat=lat2-lat1,dlng=(b.lng-a.longitude)*r;
+  const h=Math.sin(dlat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dlng/2)**2;
+  return 6371000*2*Math.asin(Math.min(1,Math.sqrt(h)));
+ };
+ const cleanInstruction=text=>(text||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+ const speakNextStep=()=>{
+  if(!voiceEnabled||!lastPosition||!navSteps.length)return;
+  let nextIndex=navSteps.findIndex((step,index)=>index>spokenStepIndex&&distanceMeters(lastPosition,step.start)<90);
+  if(nextIndex<0 && spokenStepIndex<0) nextIndex=0;
+  if(nextIndex<0)return;
+  const step=navSteps[nextIndex];
+  spokenStepIndex=nextIndex;
+  speak((nextIndex===0?'Start navigation. ':'In '+(step.distance||'a short distance')+', ')+cleanInstruction(step.instruction));
+ };
+
+ dialog.querySelector('[data-close]').onclick=()=>dialog.close();
+
+ window.addEventListener('dashvanti:tracking',event=>{
+  const data=event.detail;
+  if(!data.restaurant||!data.driver_status)return;
+  current=data;
+  updateGoogleNavigation();
+  if(['DELIVERED','CANCELLED','CANCELED','REJECTED'].includes(data.driver_status)){
+   if(dialog.open)dialog.close();
+   navButton.hidden=true;
+   voiceEnabled=false;
+   window.speechSynthesis?.cancel();
+   return;
+  }
+  const customerLeg=['PICKED_UP','ON_THE_WAY_TO_CUSTOMER','ARRIVED_AT_CUSTOMER','DELIVERED'].includes(data.driver_status);
+  const next=data.driver_status==='DRIVER_ASSIGNED'?'pickup':data.driver_status==='PICKED_UP'?'delivery':'';
+  if(!next){if(dialog.open)dialog.close();phase='';navButton.hidden=false;return;}
+  if(phase!==next){
+   phase=next;
+   dialog.querySelector('h2').textContent=next==='pickup'?'Navigate to Restaurant':'Navigate to Customer';
+   const address=next==='pickup'?data.restaurant.address:data.destination;
+   dialog.querySelector('[data-destination]').textContent=(next==='pickup'?data.restaurant.name+' · ':data.destination_name || '')+address;
+   dialog.querySelector('[data-route-summary]').textContent='Calculating distance and ETA…';
+  }
+  if(!shown.has(next)){
+    shown.add(next);
+    navButton.hidden=false;
+    dialog.showModal();
+    if(window.google?.maps&&map?.dashvantiMapState)google.maps.event.trigger(map.dashvantiMapState.map,'resize');
+  }
+ });
+
+ window.addEventListener('dashvanti:route-ready',event=>{
+  const data=event.detail;
+  if(String(data.orderId)!==host.dataset.orderId||data.status!==current?.driver_status)return;
+  dialog.querySelector('[data-route-summary]').textContent=data.miles.toFixed(1)+' miles · ETA '+data.minutes+' min';
+ });
+
+ dialog.querySelector('[data-start]').onclick=()=>{
+  dialog.close();
+  voiceEnabled=false;
+  window.speechSynthesis?.cancel();
+  activate();
+  navButton.hidden=false;
+  speak(dialog.querySelector('[data-route-summary]')?.textContent || 'Navigation started. Follow the route on the map.');
+ };
+
+ window.addEventListener('dashvanti:navigation-route',event=>{
+  if(dialog.open)dialog.querySelector('[data-destination]').textContent=event.detail.origin+' → '+event.detail.destination;
+ });
+
+ window.addEventListener('dashvanti:navigation-steps',event=>{
+  const steps=event.detail?.steps||[];
+  navSteps=steps;
+  spokenStepIndex=-1;
+  const first=steps[0];
+  const message=first ? 'Route ready. '+(first.distance ? 'In '+first.distance+', ' : '')+cleanInstruction(first.instruction) : event.detail?.summary;
+  speak(message);
+  setTimeout(speakNextStep, 1200);
+ });
+
+ window.addEventListener('dashvanti:driver-position',event=>{
+  lastPosition=event.detail;
+  speakNextStep();
+ });
+})();

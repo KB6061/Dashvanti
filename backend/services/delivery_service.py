@@ -12,9 +12,19 @@ EVENTS = {'ACCEPTED':'ORDER_ACCEPTED','CONFIRMED':'ORDER_ACCEPTED','REJECTED':'O
 
 def transition(db, user, order_id, status):
     order = owned(db, user, order_id, True)
+    if order.status in {'PAYMENT_PENDING', 'PAYMENT_FAILED', 'SANDBOX_PAID'}:
+        raise HTTPException(409, 'This order is not eligible for delivery')
     from backend.services.tracking_service import states
     restaurant_status, driver_status, _ = states(db, order)
     if user.role == 'driver':
+        from backend.services.driver_partner_service import ensure_active
+        ensure_active(db, user.id)
+        if status == 'DELIVERED':
+            from backend.models_driver_partner import DriverPartner, DriverDeliveryOTP
+            if db.get(DriverPartner, user.id):
+                otp = db.get(DriverDeliveryOTP, order_id)
+                if not otp or not otp.verified_at:
+                    raise HTTPException(409, 'Enter the customer delivery OTP before completing delivery')
         driver_allowed = {
             'DRIVER_ASSIGNED': ['ON_THE_WAY_TO_RESTAURANT'],
             'ON_THE_WAY_TO_RESTAURANT': ['ARRIVED_AT_RESTAURANT','PICKED_UP'],
@@ -53,47 +63,80 @@ def transition(db, user, order_id, status):
         emit(db, EVENTS[status], {'order_id':order.id})
     if requested_status == 'CONFIRMED':
         emit(db, 'ORDER_CONFIRMED', {'order_id':order.id})
+    if status == 'PICKED_UP':
+        from backend.models_driver_partner import DriverPartner
+        if order.driver_id and db.get(DriverPartner, order.driver_id):
+            from backend.services.driver_partner_service import issue_otp
+            issue_otp(db, order)
+    if status == 'DELIVERED' and order.driver_id:
+        from backend.services.driver_partner_service import earning
+        earning(db, order)
+    from backend.services.gps_point_service import milestone
+    milestone(db,order,status)
+    if status=='DELIVERED' and order.driver_id:
+        db.flush()
+        from backend.services.driver_queue_service import promote
+        promote(db,order.driver_id)
     if status == 'ACCEPTED' and order.mode == 'delivery' and not order.driver_id:
         from backend.services.dispatch_service import publish
         publish(db, order)
     return order
 
 def available(db, user):
-    if not db.get(Driver, user.id).online:
+    from backend.models_driver_queue import DriverUpcomingOrder
+    from backend.services.driver_queue_service import promote,details
+    promote(db,user.id)
+    if not db.get(Driver,user.id).online or db.get(DriverUpcomingOrder,user.id):
         return []
-    rows = db.scalars(select(Order).where(Order.driver_id == None, Order.mode == 'delivery', Order.status.in_(['ACCEPTED','PREPARING','PACKING','WRAPPING_UP','READY_FOR_PICKUP'])).order_by(Order.id).limit(100))
-    from backend.services.dispatch_service import eligible, offer
-    eligible_rows = []
+    rows=db.scalars(select(Order).where(Order.driver_id.is_(None),Order.mode=='delivery',Order.status.in_(['ACCEPTED','PREPARING','PACKING','WRAPPING_UP','READY_FOR_PICKUP']),Order.id.not_in(select(DriverUpcomingOrder.order_id))).order_by(Order.id).limit(100))
+    from backend.services.dispatch_service import eligible,offer
+    results=[]
     for row in rows:
-        if not db.get(SystemConfig,f'driver-release:{row.id}:{user.id}') and eligible(db, user.id, row.restaurant_id):
-            offer(db, row, user.id)
-            eligible_rows.append(row)
-    return [{
-        'id': row.id,
-        'restaurant_id': row.restaurant_id,
-        'restaurant_name': db.get(Restaurant, row.restaurant_id).name,
-        'restaurant_address': db.get(Restaurant, row.restaurant_id).address,
-        'customer_name': db.get(User, row.customer_id).name,
-        'address': row.address,
-        'delivery_fee': row.delivery_fee,
-    } for row in eligible_rows]
+        if db.get(SystemConfig,f'driver-release:{row.id}:{user.id}'):continue
+        travel=eligible(db,user.id,row.restaurant_id,require_recent_gps=True,allow_active=True)
+        if travel:
+            from backend.services.driver_offer_service import ensure_offer
+            request = ensure_offer(db, row)
+            if request and request.driver_id == user.id and request.status == 'OFFERED' and request.expires_at > now():
+                result = details(db, row, user.id, travel)
+                result['offer_expires_at'] = request.expires_at.isoformat()+'Z'
+                result['estimated_earning'] = str(row.delivery_fee + (row.tip or 0))
+                result['currency'] = row.currency
+                results.append(result)
+    return results
+
 
 def accept(db, user, order_id):
-    driver = db.scalar(select(Driver).where(Driver.id == user.id).with_for_update())
+    driver = db.scalar(select(Driver).where(Driver.id == user.id).with_for_update().execution_options(populate_existing=True))
+    from backend.services.driver_partner_service import ensure_active
+    ensure_active(db, user.id)
     if not driver.online:
         raise HTTPException(409, 'Go online first')
-    active = db.scalar(select(Order.id).where(Order.driver_id == user.id, Order.status.notin_(['DELIVERED','REJECTED','CANCELLED','CANCELED'])))
-    if active:
-        raise HTTPException(409, 'Complete your active delivery first')
-    order = db.scalar(select(Order).where(Order.id == order_id).with_for_update())
+    from backend.services.driver_queue_service import active_orders
+    from backend.models_driver_queue import DriverUpcomingOrder
+    active=active_orders(db,user.id)
+    if len(active)>1 or db.get(DriverUpcomingOrder,user.id):
+        raise HTTPException(409,'Complete your current and upcoming deliveries before accepting another')
+    order = db.scalar(select(Order).where(Order.id == order_id).with_for_update().execution_options(populate_existing=True))
     if not order or order.driver_id or order.status not in ['ACCEPTED','PREPARING','PACKING','WRAPPING_UP','READY_FOR_PICKUP'] or order.mode != 'delivery':
         raise HTTPException(409, 'Order accepted by another driver or no longer available')
+    if db.scalar(select(DriverUpcomingOrder.driver_id).where(DriverUpcomingOrder.order_id==order.id)):
+        raise HTTPException(409,'Order already reserved by another driver')
     if db.get(SystemConfig,f'driver-release:{order.id}:{user.id}'):
         raise HTTPException(409, 'You already released this delivery')
     from backend.services.dispatch_service import eligible, assigned
-    if not eligible(db, user.id, order.restaurant_id):
-        raise HTTPException(409, 'Share recent GPS and stay within 3 driving miles of the restaurant')
+    if not eligible(db, user.id, order.restaurant_id,require_recent_gps=True,allow_active=True):
+        raise HTTPException(409, 'Share recent GPS and stay within 10 driving miles of the restaurant')
+    from backend.services.driver_offer_service import validate_accept
+    validate_accept(db, user.id, order_id)
     from backend.services.operations_service import notify
+    if active:
+        db.add(DriverUpcomingOrder(driver_id=user.id,order_id=order.id))
+        db.add(DeliveryStatus(order_id=order.id,status='DRIVER_QUEUED'))
+        notify(db,user.id,'delivery-queued',f'Order #{order.id} is queued after your current delivery.',order.id)
+        notify(db,order.customer_id,'driver-queued','A delivery partner has reserved your order after their current delivery.',order.id)
+        db.flush()
+        return {'id':order.id,'queued':True,'current_order_id':active[0].id}
     notify(db, order.customer_id, 'driver-assigned', 'Your delivery partner accepted the order.', order.id)
     order.driver_id = user.id
     assigned(db, order, user.id)
@@ -103,62 +146,92 @@ def accept(db, user, order_id):
     return order
 
 def online(db, user, data):
+    if data.online:
+        from backend.services.driver_partner_service import ensure_active
+        ensure_active(db, user.id)
     driver = db.scalar(select(Driver).where(Driver.id == user.id).with_for_update())
     driver.online = data.online
+    if not driver.online:
+        from backend.services.redis_geo_service import remove
+        remove(user.id)
     return driver
 
 def update_profile(db, user, data):
+    if data.online:
+        from backend.services.driver_partner_service import ensure_active
+        ensure_active(db, user.id)
     driver = db.scalar(select(Driver).where(Driver.id == user.id).with_for_update())
     values = data.model_dump()
     for key, value in values.items():
         setattr(driver, key, value)
+    if not driver.online:
+        from backend.services.redis_geo_service import remove
+        remove(user.id)
     return driver
 
 def update_location(db, user, data):
+    from backend.services.driver_partner_service import ensure_active
+    ensure_active(db, user.id)
     if data.driver_id is not None and data.driver_id != user.id:
         raise HTTPException(403, 'Driver identity does not match your session')
+    from backend.gps_config import ENABLED
+    if ENABLED:
+        if data.order_id is not None:owned(db,user,data.order_id)
+        from backend.services.gps_ingest_service import ingest_http
+        return ingest_http(user,data)
     driver = db.scalar(select(Driver).where(Driver.id == user.id).with_for_update())
-    from backend.services.presence_service import active_delivery
-    if not driver or (not driver.online and not active_delivery(db, user.id)):
-        raise HTTPException(409, 'Go online before sharing location')
+    if not driver:
+        raise HTTPException(404, 'Driver not found')
+    if not driver.online:
+        driver.online = True
     if data.order_id is not None:
         requested = owned(db, user, data.order_id, True)
         if requested.mode != 'delivery' or requested.status in {'DELIVERED','REJECTED','CANCELLED','CANCELED'}:
             raise HTTPException(409, 'Delivery is no longer active')
     row = db.scalar(select(DriverLocation).where(DriverLocation.driver_id == user.id).with_for_update())
     if not row:
-        row = DriverLocation(driver_id=user.id, latitude=data.latitude, longitude=data.longitude, heading=data.heading)
+        row = DriverLocation(driver_id=user.id, latitude=data.latitude, longitude=data.longitude, heading=data.heading, speed=data.speed)
         db.add(row)
     else:
         row.latitude = data.latitude
         row.longitude = data.longitude
         row.heading = data.heading
+        row.speed = data.speed
         row.updated_at = now()
-    active_order = db.scalar(select(Order.id).where(Order.driver_id == user.id, Order.status.notin_(['DELIVERED','REJECTED','CANCELLED','CANCELED'])).order_by(Order.id.desc()))
+
+    active_order = data.order_id or db.scalar(select(Order.id).where(Order.driver_id == user.id, Order.status.notin_(['DELIVERED','REJECTED','CANCELLED','CANCELED'])).order_by(Order.id.desc()))
+
+    from backend.models import DriverLocationHistory
+    db.add(DriverLocationHistory(driver_id=user.id, order_id=active_order, latitude=data.latitude, longitude=data.longitude, heading=data.heading, speed=data.speed))
+
     if active_order:
         arrival_order = db.scalar(select(Order).where(Order.id == active_order).with_for_update())
         if arrival_order and arrival_order.driver_id == user.id:
             from backend.services.arrival_service import detect
             detect(db, arrival_order, row.latitude, row.longitude)
-    emit(db, 'DRIVER_LOCATION_UPDATED', {'driver_id': user.id, 'order_id': active_order, 'latitude': data.latitude, 'longitude': data.longitude})
-    return {'driver_id': user.id, 'order_id': active_order, 'latitude': row.latitude, 'longitude': row.longitude, 'heading': row.heading, 'updated_at': row.updated_at}
+    emit(db, 'DRIVER_LOCATION_UPDATED', {'driver_id': user.id, 'order_id': active_order, 'latitude': data.latitude, 'longitude': data.longitude, 'heading': data.heading, 'speed': data.speed})
+    return {'driver_id': user.id, 'order_id': active_order, 'latitude': row.latitude, 'longitude': row.longitude, 'heading': row.heading, 'speed': row.speed, 'updated_at': row.updated_at}
 
 def location_for_order(db, user, order_id):
     order = owned(db, user, order_id)
     if not order.driver_id or order.status in {'DELIVERED','REJECTED','CANCELLED','CANCELED'}:
         return None
-    row = db.get(DriverLocation, order.driver_id)
+    from backend.services.redis_geo_service import location as live_location
+    row = live_location(db,order.driver_id)
     if not row:
         return None
     driver_user = db.get(User, order.driver_id)
     driver = db.get(Driver, order.driver_id)
+    is_stale = row.updated_at < now() - timedelta(seconds=20)
     return {
         'order_id': order.id,
-        'driver': {'id': order.driver_id, 'name': driver_user.name, 'phone': driver_user.phone, 'vehicle_type': driver.vehicle_type, 'vehicle_number': driver.vehicle_number},
+        'driver': {'id': order.driver_id, 'name': driver_user.name if driver_user else '', 'phone': driver_user.phone if driver_user else '', 'vehicle_type': driver.vehicle_type if driver else '', 'vehicle_number': driver.vehicle_number if driver else ''},
         'latitude': row.latitude,
         'longitude': row.longitude,
         'heading': row.heading,
+        'speed': row.speed,
         'updated_at': row.updated_at,
+        'stale': is_stale
     }
 
 def stats(db, user, period):
@@ -177,16 +250,21 @@ def stats(db, user, period):
 
 
 def payment_history(db, user):
-    orders = list(db.scalars(select(Order).where(Order.driver_id == user.id).order_by(Order.id.desc()).limit(500)))
+    orders = list(db.scalars(select(Order).where(Order.driver_id == user.id, Order.currency == 'USD').order_by(Order.id.desc()).limit(500)))
     paid = {}
     if orders:
         for row in db.scalars(select(PayoutTransaction).where(PayoutTransaction.payee_role == 'driver', PayoutTransaction.order_id.in_([order.id for order in orders]))):
+            if row.status not in {'PAID','TRANSFERRED'}:
+                continue
             paid[row.order_id] = paid.get(row.order_id, Decimal('0')) + Decimal(str(row.amount or 0))
     rows = []
     total_earned = Decimal('0')
     total_paid = Decimal('0')
+    from backend.services.finance_service import breakdown, terms
+    from backend.services.revenue_service import refund_map
+    refunds=refund_map(db)
     for order in orders:
-        amount = Decimal(str(order.delivery_fee or 0)) + Decimal(str(order.tip or 0)) if order.mode == 'delivery' else Decimal('0')
+        amount = breakdown(order,refunds.get(order.id,0),terms(db,order))['driver_payout']
         paid_amount = paid.get(order.id, Decimal('0'))
         total_earned += amount if order.status == 'DELIVERED' else Decimal('0')
         total_paid += paid_amount
@@ -208,3 +286,23 @@ def payment_history(db, user):
             'timestamp': order.created_at,
         })
     return {'rows': rows, 'summary': {'earned': total_earned, 'paid': total_paid, 'pending': max(total_earned - total_paid, Decimal('0'))}}
+
+def release(db, user, order_id):
+    from backend.services.driver_offer_service import reject
+    reject(db, user.id, order_id)
+    order = db.get(Order, order_id)
+    if not order:
+        raise HTTPException(404, 'Order not found')
+    from backend.services.driver_queue_service import drop,promote
+    from backend.models_driver_queue import DriverUpcomingOrder
+    queued=db.get(DriverUpcomingOrder,user.id)
+    if queued and queued.order_id==order.id:drop(db,order.id,'Upcoming delivery rejected by you.')
+    if order.driver_id == user.id:
+        order.driver_id = None
+        db.add(DeliveryStatus(order_id=order.id, status='DRIVER_RELEASED'))
+    key = f'driver-release:{order.id}:{user.id}'
+    row = db.get(SystemConfig, key)
+    if not row:
+        db.add(SystemConfig(key=key, value='true'))
+    db.flush();promote(db,user.id)
+    return {'order_id': order.id, 'status': 'released'}

@@ -1,0 +1,17 @@
+.customer-auth-popup .social-options{display:grid;gap:10px;margin:20px 0 12px}
+.customer-auth-popup .social-options[hidden]{display:none}
+.customer-auth-popup .social-option{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;min-height:48px;margin:0;padding:12px 16px;border:1px solid #d6dfd5;border-radius:10px;background:#fff;color:#173f30;font-family:inherit;font-size:15px;font-weight:600;line-height:1.4;text-decoration:none;cursor:pointer;box-sizing:border-box}
+.customer-auth-popup .social-option:hover{background:#edf3e8;border-color:#205b42}
+.customer-auth-popup .social-option:focus-visible{outline:3px solid #f28b25;outline-offset:3px}
+.customer-auth-popup .social-option[hidden]{display:none}
+.customer-auth-popup .social-option svg{width:19px;height:19px;flex-shrink:0}
+.customer-auth-popup .social-icon-google{font:bold 21px Arial;color:#4285f4}
+.customer-auth-popup .social-icon-facebook{font:bold 22px Arial;color:#1877f2}
+.customer-auth-popup #google-button:empty{display:none}
+.customer-auth-popup #google-button{display:flex;justify-content:center;overflow:hidden}
+.customer-auth-popup .social-divider{display:flex;align-items:center;gap:12px;font-size:12px;color:#657369;margin:4px 0}
+.customer-auth-popup .social-divider::before,.customer-auth-popup .social-divider::after{content:'';height:1px;background:#d6dfd5;flex:1}
+.customer-auth-popup #social-status{font-size:13px;line-height:1.5;color:#657369;margin:0}
+.customer-auth-popup #social-status:empty{display:none}
+.customer-auth-popup .email-back{background:transparent;border:0;color:#205b42;padding:8px 0;font-weight:600}
+@media(max-width:480px){.customer-auth-popup{width:calc(100vw - 32px);padding:26px 20px;box-sizing:border-box}}

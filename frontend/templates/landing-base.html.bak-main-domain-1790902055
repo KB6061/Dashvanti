@@ -1,0 +1,37 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Discover local restaurants with Dashvanti. Find your favorite meals, order delivery or pickup, and follow your order from kitchen to doorstep.">
+  <meta name="theme-color" content="#173f30">
+  <title>Dashvanti · Good food. Closer to you.</title>
+  <link rel="icon" href="{% static 'logo.jpeg' %}">
+  <link rel="stylesheet" href="{% static 'homepage.css' %}?v=20261001">
+  <script src="{% static 'homepage.js' %}?v=20261001" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="header">
+    <div class="container header-inner">
+      <a class="brand" href="/" aria-label="Dashvanti home"><img src="{% static 'logo.jpeg' %}" width="48" height="48" alt=""><span>Dashvanti<span class="brand-dot">.</span></span></a>
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="main-nav" aria-label="Open navigation"><span></span><span></span></button>
+      <nav id="main-nav" class="nav" aria-label="Main navigation">
+        <a href="#explore">Explore food</a><a href="#how-it-works">How it works</a><a href="#partners">Partner with us</a>
+        <a class="nav-signin" href="{{ portal_urls.customer }}/customer/login">Sign in <span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">{% block content %}{% endblock %}</main>
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div><a class="brand" href="/">Dashvanti<span class="brand-dot">.</span></a><p>Good food. Local favorites.<br>Delivered to your everyday.</p><span class="footer-note">Made for hungry moments.</span></div>
+      <div><h2>For food lovers</h2><a href="{{ portal_urls.customer }}/customer/restaurants">Explore restaurants</a><a href="{{ portal_urls.customer }}/customer/register">Create an account</a><a href="{{ portal_urls.customer }}/customer/orders">Your orders</a></div>
+      <div><h2>Grow with us</h2><a href="{{ portal_urls.restaurant }}/restaurant/register">Restaurant partners</a><a href="{{ portal_urls.driver }}/driver/register">Delivery partners</a><a href="{{ portal_urls.restaurant }}/restaurant/login">Restaurant sign in</a></div>
+      <div><h2>A little help</h2><a href="#faq">Common questions</a><a href="{{ portal_urls.driver }}/driver/login">Delivery partner sign in</a><a href="{{ portal_urls.customer }}/customer/forgot">Recover your account</a></div>
+    </div>
+    <div class="container footer-bottom"><span>© {% now 'Y' %} Dashvanti. All rights reserved.</span><a href="#main">Back to top ↑</a></div>
+  </footer>
+</body>
+</html>

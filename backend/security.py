@@ -7,6 +7,7 @@ from backend.db import get_db
 from backend.models import User
 
 bearer = HTTPBearer()
+optional_bearer = HTTPBearer(auto_error=False)
 
 def current_user(request: Request, auth: HTTPAuthorizationCredentials = Depends(bearer), db=Depends(get_db, scope='function')):
     try:
@@ -20,6 +21,9 @@ def current_user(request: Request, auth: HTTPAuthorizationCredentials = Depends(
         return user
     except (jwt.PyJWTError, ValueError, KeyError):
         raise HTTPException(401, 'Session expired')
+
+def optional_user(request: Request, auth=Depends(optional_bearer), db=Depends(get_db, scope='function')):
+    return current_user(request, auth, db) if auth else None
 
 def role(*allowed):
     def check(user=Depends(current_user)):

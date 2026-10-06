@@ -1,0 +1,21 @@
+(() => {
+ let avatar='car',carSvg='';
+ try { avatar=localStorage.getItem('driver-navigation-avatar')==='arrow'?'arrow':'car'; } catch(_) {}
+ window.dashvantiNavigationIcon=(heading=0,kind=avatar)=>{
+  const angle=Number.isFinite(heading)?heading:0;
+  if(kind==='arrow')return {path:'M 0,-18 L 12,12 L 0,6 L -12,12 Z',fillColor:'#1976e8',fillOpacity:1,strokeColor:'#fff',strokeWeight:3,scale:1.3,rotation:angle,anchor:new google.maps.Point(0,0)};
+  if(!carSvg)return {url:'/static/driver-car.svg?v=1',scaledSize:new google.maps.Size(76,35),anchor:new google.maps.Point(38,28)};
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><g transform="rotate('+((angle+90)%360)+' 48 48)">'+carSvg+'</g></svg>';
+  return {url:'data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(svg),scaledSize:new google.maps.Size(76,76),anchor:new google.maps.Point(38,38)};
+ };
+ window.dashvantiSetNavigationAvatar=value=>{
+  avatar=value==='arrow'?'arrow':'car';
+  try{localStorage.setItem('driver-navigation-avatar',avatar);}catch(_){}
+  window.dispatchEvent(new Event('dashvanti:avatar-change'));
+ };
+ window.dashvantiNavigationAvatar=()=>avatar;
+ fetch('/static/driver-car.svg?v=1',{cache:'force-cache'}).then(r=>r.ok?r.text():'').then(svg=>{
+  carSvg=svg.replace('<svg ','<svg x="10" y="30" width="76" height="35" ');
+  window.dispatchEvent(new Event('dashvanti:avatar-change'));
+ }).catch(()=>{});
+})();

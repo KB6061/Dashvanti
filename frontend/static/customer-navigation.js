@@ -88,5 +88,5 @@
   if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)panel.close();
  });
  panel.addEventListener('close',()=>selection++);
- load();setInterval(()=>{if(!document.hidden)load();},60000);
+ load();setInterval(()=>{if(!document.hidden)load();},5000);
 })();

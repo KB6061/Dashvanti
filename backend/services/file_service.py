@@ -8,7 +8,7 @@ from backend.config import settings
 from backend.models import File, MenuItem, Review
 
 MAX_BYTES = 5 * 1024 * 1024
-Image.MAX_IMAGE_PIXELS = 20000000
+Image.MAX_IMAGE_PIXELS = 30000000
 
 def upload(db, user, upload, purpose, entity_id):
     allowed = {'customer': {'profile','review'}, 'restaurant': {'profile','menu','fssai','gst','license','cover','logo','gallery'}, 'driver': {'profile','license','rc','id_proof'}}
@@ -56,7 +56,7 @@ def listing(db, user):
 
 def download(db, user, file_id):
     row = db.get(File, file_id)
-    if not row or (row.user_id != user.id and row.purpose not in {'menu','review','cover','logo','gallery'}):
+    if not row or (row.user_id != user.id and row.purpose not in {'menu','review','cover','logo','gallery'} and not (row.purpose == 'profile' and db.get(__import__('backend.models', fromlist=['Restaurant']).Restaurant, row.user_id))):
         raise HTTPException(404, 'File not found')
     path = Path(row.path).resolve()
     if not path.is_relative_to(Path(settings.file_root).resolve()) or not path.is_file():

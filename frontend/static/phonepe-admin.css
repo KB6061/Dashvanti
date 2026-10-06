@@ -1,0 +1,9 @@
+[data-payment-admin] .admin-panel{margin-bottom:20px}
+[data-payment-admin] .admin-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+[data-payment-admin] .admin-form-grid label{min-width:0}
+[data-payment-admin] .admin-panel-head{display:flex;justify-content:space-between;gap:20px;align-items:center;margin-bottom:22px}
+[data-payment-admin] .admin-panel-head h1{margin:0 0 8px}
+[data-payment-admin] table{width:100%}
+[data-payment-admin] code{overflow-wrap:anywhere}
+[data-payment-admin] form[action]{min-width:0}
+@media(max-width:700px){[data-payment-admin] .admin-form-grid{grid-template-columns:1fr}[data-payment-admin] .admin-panel-head{display:block}[data-payment-admin] .method-toggle{flex-wrap:wrap}}

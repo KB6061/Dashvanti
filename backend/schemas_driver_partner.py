@@ -1,0 +1,98 @@
+from datetime import date
+from decimal import Decimal
+from typing import Literal
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
+
+
+class Registration(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    first_name: str = Field(min_length=1, max_length=80)
+    last_name: str = Field(min_length=1, max_length=80)
+    mobile: str = Field(min_length=10, max_length=20)
+    email: EmailStr
+    date_of_birth: date
+    gender: str = Field(max_length=30)
+    address: str = Field(min_length=10, max_length=500)
+    country: Literal['IN'] = 'IN'
+    aadhaar: str = Field(pattern=r'^[2-9][0-9]{11}$')
+    pan: str = Field(pattern=r'^[A-Z]{5}[0-9]{4}[A-Z]$')
+    license_number: str = Field(min_length=5, max_length=40)
+    vehicle_type: Literal['Bike', 'Scooter', 'Car']
+    vehicle_number: str = Field(min_length=4, max_length=30)
+    account_holder: str = Field(min_length=2, max_length=120)
+    account_number: str = Field(pattern=r'^[0-9]{9,18}$')
+    ifsc: str = Field(pattern=r'^[A-Z]{4}0[A-Z0-9]{6}$')
+    upi: str = Field(default='', max_length=120)
+    emergency_name: str = Field(min_length=2, max_length=120)
+    emergency_relationship: str = Field(min_length=2, max_length=40)
+    emergency_phone: str = Field(min_length=10, max_length=20)
+    nominee_name: str = Field(min_length=2, max_length=120)
+    nominee_relationship: str = Field(min_length=2, max_length=40)
+    nominee_phone: str = Field(min_length=10, max_length=20)
+    terms: bool
+    driver_policy: bool
+    insurance_policy: bool
+    identity_consent: bool
+
+
+class AdminAction(BaseModel):
+    action: Literal['REVIEW', 'APPROVE', 'REJECT', 'REQUEST_DOCUMENTS', 'SUSPEND', 'REACTIVATE', 'DEACTIVATE', 'WARNING']
+    notes: str = Field(min_length=3, max_length=2000)
+
+
+class DocumentReview(BaseModel):
+    status: Literal['APPROVED', 'REJECTED']
+    notes: str = Field(default='', max_length=1000)
+
+
+class IncidentInput(BaseModel):
+    kind: Literal['Accident', 'Medical Emergency', 'Vehicle Breakdown', 'Harassment', 'Other']
+    description: str = Field(min_length=3, max_length=2000)
+    order_id: int | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+
+
+class WithdrawalInput(BaseModel):
+    request_key: str = Field(min_length=8, max_length=50)
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    currency: Literal['INR', 'USD']
+    method: Literal['BANK', 'UPI']
+
+
+class WithdrawalAction(BaseModel):
+    status: Literal['PAID', 'REJECTED']
+    reference: str = Field(min_length=3, max_length=120)
+
+
+class InsuranceInput(BaseModel):
+    insurer: str = Field(min_length=2, max_length=120)
+    policy_number: str = Field(min_length=3, max_length=120)
+    expires_on: date
+    active: bool
+
+
+class OTPInput(BaseModel):
+    otp: str = Field(pattern=r'^\d{4}$')
+
+
+class Resolution(BaseModel):
+    status: Literal['OPEN', 'INVESTIGATING', 'RESOLVED']
+    resolution: str = Field(max_length=2000)
+
+
+class PushDeviceInput(BaseModel):
+    installation_id: str = Field(min_length=16, max_length=64, pattern=r'^[a-zA-Z0-9_-]+$')
+    token: str = Field(min_length=20, max_length=4096)
+
+
+class ClaimInput(BaseModel):
+    incident_id: int
+    reference: str = Field(min_length=3, max_length=120)
+    amount: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
+    status: Literal['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PAID', 'REJECTED']
+
+
+class ManagerLogin(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)

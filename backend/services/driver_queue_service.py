@@ -1,0 +1,84 @@
+from sqlalchemy import select
+from backend.models import Driver,Order,Restaurant,User,OrderItem,DeliveryStatus
+from backend.models_driver_queue import DriverUpcomingOrder
+from backend.services import eta_service
+
+FINAL={'DELIVERED','CANCELLED','CANCELED','REJECTED'}
+OPEN={'ACCEPTED','CONFIRMED','PREPARING','PACKING','WRAPPING_UP','READY_FOR_PICKUP'}
+
+def active_orders(db,driver_id):
+    return list(db.scalars(select(Order).where(Order.driver_id==driver_id,Order.status.not_in(FINAL)).order_by(Order.created_at,Order.id)))
+
+def drop(db,order_id,reason):
+    row=db.scalar(select(DriverUpcomingOrder).where(DriverUpcomingOrder.order_id==order_id))
+    if row:
+        from backend.services.operations_service import notify
+        notify(db,row.driver_id,'delivery-queue-removed',reason,order_id)
+        db.delete(row);db.flush()
+
+def promote(db,driver_id):
+    if driver_id is None or db.get(DriverUpcomingOrder,driver_id) is None:return None
+    driver=db.scalar(select(Driver).where(Driver.id==driver_id).with_for_update().execution_options(populate_existing=True))
+    queued=db.get(DriverUpcomingOrder,driver_id)
+    if not queued:return None
+    order=db.scalar(select(Order).where(Order.id==queued.order_id).with_for_update().execution_options(populate_existing=True))
+    queued=db.scalar(select(DriverUpcomingOrder).where(DriverUpcomingOrder.driver_id==driver_id).execution_options(populate_existing=True))
+    if not queued:return None
+    if not order or order.status not in OPEN or order.driver_id is not None:
+        drop(db,queued.order_id,'Upcoming order is no longer available.');return None
+    if active_orders(db,driver_id):return None
+    if not driver or not driver.online:
+        drop(db,order.id,'Upcoming order released because you are offline.');return None
+    db.delete(queued);db.flush()
+    order.driver_id=driver_id
+    db.add(DeliveryStatus(order_id=order.id,status='DRIVER_ASSIGNED'))
+    from backend.services.dispatch_service import assigned
+    from backend.services.operations_service import notify
+    from backend.services.kafka_event_service import emit
+    assigned(db,order,driver_id)
+    notify(db,order.customer_id,'driver-assigned','Your delivery partner is now collecting your order.',order.id)
+    emit(db,'DRIVER_ASSIGNED',{'order_id':order.id,'driver_id':driver_id})
+    db.flush();return order
+
+def details(db,order,driver_id,pickup=None):
+    active=active_orders(db,driver_id)
+    restaurant=db.get(Restaurant,order.restaurant_id)
+    customer=db.get(User,order.customer_id)
+    remaining=0;estimated=False
+    if active:
+        current=active[0]
+        from backend.models import DriverLocation
+        from backend.services.tracking_service import states
+        from backend.services.redis_geo_service import location as live_location
+        location=live_location(db,driver_id)
+        current_restaurant=db.get(Restaurant,current.restaurant_id)
+        _,driver_status,_=states(db,current)
+        origin=(location.latitude,location.longitude) if location else current_restaurant.address
+        if driver_status not in {'PICKED_UP','ON_THE_WAY_TO_CUSTOMER','ARRIVED_AT_CUSTOMER'}:
+            to_pickup=eta_service.route(origin,current_restaurant.address)
+            remaining+=to_pickup['drive_minutes'];estimated|=to_pickup.get('distance_type')!='driving'
+            origin=current_restaurant.address
+            if current.status not in {'READY_FOR_PICKUP','ON_THE_WAY_TO_RESTAURANT','ARRIVED_AT_RESTAURANT'}:remaining+=current_restaurant.delivery_minutes or 0
+        to_customer=eta_service.route(origin,current.address)
+        remaining+=to_customer['drive_minutes'];estimated|=to_customer.get('distance_type')!='driving'
+        travel=eta_service.route(current.address,restaurant.address)
+    else:
+        travel=pickup or {}
+    pickup_minutes=remaining+travel.get('drive_minutes',0)
+    if order.status!='READY_FOR_PICKUP':pickup_minutes=max(pickup_minutes,restaurant.delivery_minutes or 0)
+    delivery=eta_service.route(restaurant.address,order.address)
+    estimated|=travel.get('distance_type')!='driving' or delivery.get('distance_type')!='driving'
+    items=list(db.scalars(select(OrderItem).where(OrderItem.order_id==order.id)))
+    return {'id':order.id,'restaurant_id':order.restaurant_id,'restaurant_name':restaurant.name,'restaurant_address':restaurant.address,
+            'customer_name':customer.name if customer else '', 'address':order.address,'delivery_fee':order.delivery_fee,'currency':order.currency,
+            'items':[{'name':item.name,'quantity':item.quantity} for item in items],'upcoming':bool(active),
+            'current_order_id':active[0].id if active else None,'pickup_eta_minutes':pickup_minutes,
+            'delivery_eta_minutes':pickup_minutes+delivery['drive_minutes'],'eta_estimated':estimated,
+            'pickup_distance_miles':travel.get('distance_miles')}
+
+def queued(db,user):
+    promote(db,user.id)
+    row=db.get(DriverUpcomingOrder,user.id)
+    if not row:return []
+    order=db.get(Order,row.order_id)
+    return [details(db,order,user.id)] if order else []

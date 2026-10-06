@@ -90,6 +90,8 @@ def cancel(db,user,order_id,data,admin=False):
         return result
     driver_id=order.driver_id
     order.status='CANCELLED'
+    from backend.services.driver_queue_service import drop
+    drop(db,order.id,'Upcoming order was cancelled.')
     result.update(reason=data.reason,actor_id=actor,actor_role=role,refund_status='PENDING' if money(result['refund']) else 'NOT_REQUIRED',created_at=now().isoformat())
     db.add(SystemConfig(key=key,value=json.dumps(result)))
     if money(result['refund']):

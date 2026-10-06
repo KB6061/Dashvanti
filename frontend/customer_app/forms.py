@@ -14,6 +14,7 @@ class AddressForm(forms.Form):
 
 
 class CheckoutForm(forms.Form):
+    payment_mode = forms.ChoiceField(choices=[('Cash','Cash'),('PhonePe','PhonePe')], initial='Cash')
     mode = forms.ChoiceField(choices=[('delivery','Delivery (+ $30)'),('pickup','Pickup')])
     address_id = forms.TypedChoiceField(coerce=int,required=False,empty_value=None)
     promo_code = forms.CharField(required=False, max_length=40, label='Promo code')

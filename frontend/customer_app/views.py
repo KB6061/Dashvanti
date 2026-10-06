@@ -8,6 +8,7 @@ from common_app.views import protected, orders, order
 from customer_app.forms import AddressForm, CheckoutForm, ReviewForm
 
 @protected
+@require_http_methods(['GET'])
 def restaurants(request):
     if request.GET.get('mode') in {'delivery','pickup'}:
         request.session['order_mode'] = request.GET['mode']
@@ -27,6 +28,13 @@ def restaurants(request):
     meta = browse.get('meta', {}) if isinstance(browse, dict) else {}
     orders_data = call(request,'GET','/orders')
     active_order = next((row for row in orders_data if row.get('status') not in {'DELIVERED','REJECTED','CANCELLED','CANCELED'}), None)
+    if active_order:
+        restaurant_data = call(request, 'GET', f"/restaurants/{active_order['restaurant_id']}")
+        active_order['restaurant_name'] = restaurant_data['restaurant']['name']
+        presentation = restaurant_data.get('presentation') or {}
+        photos = restaurant_data.get('photos') or []
+        photo_id = presentation.get('cover_file_id') or presentation.get('logo_file_id') or (photos[0] if photos else None)
+        active_order['restaurant_photo_url'] = f'/customer/files/{photo_id}' if photo_id else ''
     featured = []
     for restaurant_row in restaurants:
         for item in restaurant_row.get('matches', []):
@@ -71,9 +79,10 @@ def restaurants(request):
         'reviews': reviews,
         'rewards': rewards,
     }
-    return render(request,'customer_app/restaurants.html',context)
+    response = render(request,'customer_app/restaurants.html',context)
+    response['Cache-Control'] = 'no-store'
+    return response
 
-@protected
 @require_http_methods(['GET'])
 def search_suggestions(request):
     query = request.GET.get('q', '').strip()[:120]
@@ -81,7 +90,6 @@ def search_suggestions(request):
         return JsonResponse({'items': []})
     return JsonResponse(call(request, 'GET', '/restaurants/suggestions', params={'q': query, 'limit': 12}))
 
-@protected
 @require_http_methods(['POST'])
 def order_mode(request):
     mode = request.POST.get('mode', '')
@@ -91,7 +99,6 @@ def order_mode(request):
     request.session['order_mode'] = result['mode']
     return JsonResponse({'mode': result['mode']})
 
-@protected
 @require_http_methods(['POST'])
 def location(request):
     try:
@@ -99,12 +106,11 @@ def location(request):
         longitude = float(request.POST.get('longitude', ''))
     except ValueError:
         return JsonResponse({'detail': 'Invalid location'}, status=400)
-    payload = {'latitude': latitude, 'longitude': longitude}
+    payload = {'latitude': latitude, 'longitude': longitude, 'country': request.POST.get('country') or None}
     if 'address' in request.POST:
         payload['address'] = request.POST.get('address', '').strip()
     return JsonResponse(call(request, 'POST', '/customer/location', payload))
 
-@protected
 @require_http_methods(['POST'])
 def photo(request):
     upload = request.FILES.get('photo')
@@ -114,7 +120,6 @@ def photo(request):
     request.session['profile_photo'] = result['id']
     return JsonResponse({'id': result['id'], 'url': f"/customer/files/{result['id']}"})
 
-@protected
 def restaurant(request,restaurant_id):
     result = call(request,'GET',f'/restaurants/{restaurant_id}')
     grouped = {}
@@ -128,7 +133,6 @@ def restaurant(request,restaurant_id):
     result['menu_groups'] = [{'name': name, 'items': items} for name, items in grouped.items()]
     return render(request,'customer_app/restaurant.html',result)
 
-@protected
 @require_http_methods(['GET','POST'])
 def cart(request):
     if request.method=='POST':
@@ -148,7 +152,6 @@ def cart(request):
         return JsonResponse(data)
     return render(request,'customer_app/cart.html',data)
 
-@protected
 @require_http_methods(['GET','POST'])
 def addresses(request,address_id=None):
     rows = call(request,'GET','/addresses')
@@ -163,7 +166,6 @@ def addresses(request,address_id=None):
             return redirect('/customer/addresses')
     return render(request,'customer_app/addresses.html',{'form':form,'addresses':rows,'title':'Delivery addresses'})
 
-@protected
 @require_http_methods(['GET','POST'])
 def checkout(request):
     initial_mode = request.session.get('order_mode', 'delivery')
@@ -183,6 +185,9 @@ def checkout(request):
             call(request, 'POST', '/customer/order-mode', {'mode': mode})
             request.session['order_mode'] = mode
             form.cleaned_data['tip'] = str(form.cleaned_data.get('tip') or 0)
+            if form.cleaned_data['payment_mode'] == 'PhonePe':
+                result = call(request, 'POST', '/phonepe/pay', {'checkout': form.cleaned_data, 'instrument': 'UPI'})
+                return redirect(f"/customer/payment/{result['id']}")
             result = call(request, 'POST', '/orders', form.cleaned_data)
             return redirect(f"/customer/order/{result['id']}/track")
         except APIError as exc:
@@ -226,11 +231,11 @@ def checkout(request):
         'item_count': item_count,
         'checkout_restaurant_markers': [{'id': 'restaurant-' + str(group['restaurant_id']), 'name': group['restaurant_name'], 'address': group['restaurant_address']} for group in cart_data.get('groups', []) if group.get('restaurant_address')],
         'cancellation_policy': call(request,'GET','/cancellation-policy'),
+        'checkout_currency': cart_data.get('groups', [{}])[0].get('currency', 'USD') if cart_data.get('groups') else 'USD',
         'title': 'Checkout',
     })
 
 
-@protected
 @require_http_methods(['POST'])
 def checkout_quote(request):
     mode = request.POST.get('mode', '')
@@ -247,13 +252,11 @@ def checkout_quote(request):
         return JsonResponse({'detail': str(exc)}, status=exc.status)
 
 
-@protected
 @require_http_methods(['POST'])
 def reorder(request,order_id):
     call(request,'POST',f'/orders/{order_id}/reorder')
     return redirect('/customer/cart')
 
-@protected
 @require_http_methods(['GET','POST'])
 def review(request,order_id):
     form = ReviewForm(request.POST or None)
@@ -263,7 +266,6 @@ def review(request,order_id):
         return redirect('/customer/files')
     return render(request,'form.html',{'form':form,'title':'Review your order'})
 
-@protected
 @require_http_methods(['GET'])
 def checkout_eta(request):
     try:
@@ -274,7 +276,6 @@ def checkout_eta(request):
     except APIError as exc:
         return JsonResponse({'detail': str(exc)}, status=exc.status)
 
-@protected
 @require_http_methods(['GET', 'POST'])
 def address_book(request):
     if request.method == 'POST':
@@ -282,14 +283,13 @@ def address_book(request):
         payload = {'label': request.POST.get('label', 'Home'), 'details': request.POST.get('address', ''),
                    'is_default': request.POST.get('is_default') == 'on'}
         payload.update({'id': address_id or None, 'latitude': request.POST.get('latitude'),
-                        'longitude': request.POST.get('longitude')})
+                        'longitude': request.POST.get('longitude'), 'country': request.POST.get('country') or None})
         result = call(request, 'POST', '/addresses/select', payload)
         request.session['delivery_address_id'] = result['id']
         return JsonResponse(result)
     return JsonResponse({'addresses': call(request, 'GET', '/addresses'),
                          'location': call(request, 'GET', '/customer/location')})
 
-@protected
 @require_http_methods(['GET', 'POST'])
 def notification_panel(request):
     if request.method == 'POST':
@@ -299,7 +299,6 @@ def notification_panel(request):
         return JsonResponse(call(request, 'POST', f'/operations/notifications/{notification_id}/read'))
     return JsonResponse(call(request, 'GET', '/operations/notifications'), safe=False)
 
-@protected
 @require_http_methods(['GET'])
 def order_availability(request, entity, entity_id):
     path = 'restaurants' if entity == 'restaurant' else 'menu'

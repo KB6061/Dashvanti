@@ -1,0 +1,47 @@
+import asyncio
+from collections import defaultdict
+from dataclasses import dataclass,field
+
+@dataclass(eq=False)
+class Peer:
+    websocket:object
+    scope:str
+    resource:int|None
+    claims:dict
+    queue:asyncio.Queue=field(default_factory=lambda:asyncio.Queue(maxsize=32))
+
+class WebSocketManager:
+    def __init__(self):
+        self.peers=set();self.orders=defaultdict(set);self.admins=set()
+
+    def add(self,peer):
+        self.peers.add(peer)
+        if peer.scope=='admin':self.admins.add(peer)
+        if peer.scope=='order':self.orders[peer.resource].add(peer)
+
+    def remove(self,peer):
+        self.peers.discard(peer);self.admins.discard(peer)
+        if peer.scope=='order':
+            self.orders[peer.resource].discard(peer)
+            if not self.orders[peer.resource]:self.orders.pop(peer.resource,None)
+
+    async def close_slow(self,peer):
+        try:await asyncio.wait_for(peer.websocket.close(code=1013),5)
+        except Exception:pass
+
+    async def writer(self,peer):
+        while True:
+            data=await peer.queue.get()
+            await asyncio.wait_for(peer.websocket.send_json(data),5)
+
+    async def push(self,data):
+        from backend.services.gps_auth_service import visible_order
+        order_id=data.get('order_id')
+        subscribers=self.orders.get(order_id,set())
+        allowed=await asyncio.to_thread(visible_order,order_id,data['driver_id']) if subscribers else False
+        recipients=self.admins | subscribers if allowed else self.admins
+        for peer in tuple(recipients):
+            try:peer.queue.put_nowait(data)
+            except asyncio.QueueFull:
+                self.remove(peer)
+                asyncio.create_task(self.close_slow(peer))

@@ -1,0 +1,367 @@
+window.dashvantiCarPinIcon=(heading=0)=>window.dashvantiNavigationIcon(heading,'car'); window.dashvantiSilverCarIcon=window.dashvantiCarPinIcon;
+(() => {
+  const mapElements = [...document.querySelectorAll('[data-google-map]')];
+  if (!mapElements.length && !document.querySelector('[data-address-autocomplete]')) return;
+
+  const apiKey = document.body.dataset.googleMapsKey || '';
+  const setStatus = (element, message) => {
+    const status = element.parentElement?.querySelector('[data-map-status]');
+    if (status) status.textContent = message;
+  };
+  if (!apiKey) {
+    mapElements.forEach((element) => setStatus(element, 'Map configuration unavailable'));
+    return;
+  }
+
+  const mapsReady = new Promise((resolve, reject) => {
+    if (window.google?.maps) {
+      resolve(window.google.maps);
+      return;
+    }
+    const callback = `dashvantiMapsReady${Date.now()}`;
+    window[callback] = () => {
+      resolve(window.google.maps);
+      delete window[callback];
+    };
+    const script = document.createElement('script');
+    const params = new URLSearchParams({key: apiKey, v: 'weekly', loading: 'async', libraries: 'places', callback});
+    script.src = `https://maps.googleapis.com/maps/api/js?${params}`;
+    script.async = true;
+    script.onerror = () => reject(new Error('Google Maps failed to load'));
+    document.head.appendChild(script);
+  });
+
+  const states = new Map();
+  const geocodeCache = new Map();
+  const geocodeAddress = (geocoder, address) => {
+    const normalized = address.trim().toLowerCase();
+    if (!geocodeCache.has(normalized)) {
+      geocodeCache.set(normalized, new Promise((resolve, reject) => {
+        geocoder.geocode({address}, async (results, status) => {
+          if (status === 'OK' && results?.[0]) {resolve(results[0].geometry.location);return;}
+          try {
+            const {Place}=await google.maps.importLibrary('places');
+            const {places}=await Place.searchByText({textQuery:address,fields:['location'],maxResultCount:1});
+            if(!places?.[0]?.location)throw new Error('Restaurant location unavailable');
+            resolve(places[0].location);
+          }catch(error){geocodeCache.delete(normalized);reject(error);}
+        });
+      }));
+    }
+    return geocodeCache.get(normalized);
+  };
+  const markerData = (element) => {
+    const rows = [];
+    const scriptId = element.dataset.mapMarkersId;
+    if (scriptId) {
+      try {
+        rows.push(...JSON.parse(document.getElementById(scriptId)?.textContent || '[]'));
+      } catch (_) {
+      }
+    }
+    if (element.dataset.mapAddress) {
+      rows.push({id: 'primary', name: element.dataset.mapTitle || 'Location', address: element.dataset.mapAddress});
+    }
+    return rows.filter((row) => row.address || (
+      window.dashvantiValidCoordinates(row)
+    ));
+  };
+  const addMarker = (state, item, position) => {
+    const labels = {driver: 'D', restaurant: 'R', destination: 'H'};
+    const marker = new google.maps.Marker({
+      map: state.map,
+      position,
+      title: item.name || item.address || 'Location',
+        icon: item.type === 'driver' ? window.dashvantiNavigationIcon((item.heading || 0)-(state.map.getHeading?.() || 0)) : undefined,
+      label: !state.element.closest('[data-live-tracking]') && item.type !== 'driver' && item.type && labels[item.type] ? {text: labels[item.type], color: '#ffffff', fontWeight: '800'} : undefined,
+    });
+    if (state.element.dataset.mapShowName === 'true' && item.name) {
+      new google.maps.Marker({
+        map: state.map, position, clickable: false,
+        icon: {path: google.maps.SymbolPath.CIRCLE, scale: 0, labelOrigin: new google.maps.Point(0, 18)},
+        label: {text: item.name, color: '#9b4312', fontSize: '14px', fontWeight: '700', className: 'restaurant-map-name'}
+      });
+    }
+    const key = String(item.id ?? item.address);
+    const entry = {marker, item, position};
+    state.markers.set(key, entry);
+    if (item.address) state.addresses.set(item.address.trim().toLowerCase(), entry);
+    state.bounds.extend(position);
+    const latitude = typeof position.lat === 'function' ? position.lat() : Number(position.lat);
+    const longitude = typeof position.lng === 'function' ? position.lng() : Number(position.lng);
+    document.dispatchEvent(new CustomEvent('dashvanti:map-marker-ready', {detail: {
+      mapId: state.element.id,
+      item,
+      latitude,
+      longitude,
+    }}));
+    marker.addListener('click', () => {
+      const content = document.createElement('div');
+      const title = document.createElement('strong');
+      const address = document.createElement('div');
+      title.textContent = item.name || 'Location';
+      address.textContent = item.address || (
+        Number.isFinite(Number(item.latitude))
+          ? Number(item.latitude).toFixed(5) + ', ' + Number(item.longitude).toFixed(5)
+          : 'Live location'
+      );
+      content.append(title, address);
+      state.info.setContent(content);
+      state.info.open({map: state.map, anchor: marker});
+      document.dispatchEvent(new CustomEvent('dashvanti:map-marker-selected', {detail: {mapId: state.element.id, item}}));
+    });
+    return marker;
+  };
+  const updateDriverPosition = (state, location) => {
+    if (!window.dashvantiValidCoordinates(location)) return;
+    const target = {lat:Number(location.latitude), lng:Number(location.longitude)};
+    let entry = state.markers.get('driver-self');
+    if (!entry) {
+      addMarker(state, {id:'driver-self', type:'driver', name:'Your live location', heading:location.heading || 0}, target);
+      state.map.setCenter(target);
+      state.map.setZoom(16);
+      return;
+    }
+    cancelAnimationFrame(state.driverFrame);
+    entry.item.heading=location.heading || 0;
+    entry.marker.setIcon(window.dashvantiNavigationIcon(entry.item.heading-(state.map.getHeading?.() || 0)));
+    const previous = entry.marker.getPosition();
+    const start = {lat:previous.lat(), lng:previous.lng()};
+    const began = performance.now();
+    const animate = now => {
+      const fraction = Math.min(1,(now-began)/650);
+      entry.marker.setPosition({lat:start.lat+(target.lat-start.lat)*fraction,lng:start.lng+(target.lng-start.lng)*fraction});
+      if(fraction<1)state.driverFrame=requestAnimationFrame(animate);
+    };
+    state.driverFrame=requestAnimationFrame(animate);
+    if(!state.map.getBounds()?.contains(target))state.map.panTo(target);
+  };
+  window.addEventListener('dashvanti:avatar-change',()=>{states.forEach(state=>state.markers.forEach(entry=>{if(entry.item.type==='driver')entry.marker.setIcon(window.dashvantiNavigationIcon((entry.item.heading||0)-(state.map.getHeading?.() || 0)));}));});
+  window.addEventListener('dashvanti:portal-live',event=>{
+    if(document.body.classList.contains('admin-portal') && Array.isArray(event.detail.drivers)){
+      states.forEach(state=>{
+        if(!state.element.hasAttribute('data-map-online-drivers'))return;
+        const drivers=event.detail.drivers,ids=new Set(drivers.map(driver=>'driver-'+driver.id));
+        state.markers.forEach((entry,id)=>{if(entry.item.type==='driver' && !ids.has(id)){entry.marker.setMap(null);state.markers.delete(id);}});
+        drivers.forEach(driver=>{
+          if(!window.dashvantiValidCoordinates(driver))return;
+          const id='driver-'+driver.id,position={lat:driver.latitude,lng:driver.longitude};
+          const entry=state.markers.get(id);
+          if(!entry){addMarker(state,{...driver,id,type:'driver'},position);return;}
+          entry.item={...driver,id,type:'driver'};entry.position=position;
+          entry.marker.setPosition(position);entry.marker.setIcon(window.dashvantiNavigationIcon((driver.heading || 0)-(state.map.getHeading?.() || 0),'car'));
+        });
+      });
+    }
+    if(!event.detail.navigation_active)return;
+    states.forEach(state=>state.markers.forEach(entry=>{
+      if(entry.item.type!=='driver')return;
+      const order=event.detail.orders.find(order=>String(entry.item.id)==='driver-'+order.driver_id);
+      if(order?.location){entry.marker.setPosition({lat:order.location.latitude,lng:order.location.longitude});entry.item.heading=order.location.heading;entry.marker.setIcon(window.dashvantiNavigationIcon((order.location.heading || 0)-(state.map.getHeading?.() || 0)));}
+    }));
+  });
+  window.addEventListener('dashvanti:driver-position', event => {
+    document.querySelectorAll('[data-map-driver-location="true"]').forEach(element => {
+      const state=states.get(element);
+      if(state)updateDriverPosition(state,event.detail);
+    });
+  });
+
+  const initializeMap = async (element) => {
+    if (states.has(element)) return states.get(element);
+    await mapsReady;
+    const map = new google.maps.Map(element, {
+      center: {lat: 39.5, lng: -98.35},
+      renderingType: element.closest('[data-live-tracking]') ? google.maps.RenderingType.VECTOR : google.maps.RenderingType.RASTER,
+      mapTypeId: google.maps.MapTypeId.ROADMAP,
+      headingInteractionEnabled: false,
+      tiltInteractionEnabled: false,
+      zoom: 4,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: !element.closest('[data-tracking-role=driver]'),
+      gestureHandling: 'greedy',
+    });
+    const state = {element, map, geocoder: new google.maps.Geocoder(), info: new google.maps.InfoWindow(), bounds: new google.maps.LatLngBounds(), markers: new Map(), addresses: new Map()};
+    states.set(element, state);
+    map.addListener('heading_changed',()=>state.markers.forEach(entry=>{if(entry.item.type==='driver')entry.marker.setIcon(window.dashvantiNavigationIcon((entry.item.heading || 0)-(map.getHeading?.() || 0)));}));
+    element.dashvantiMapState = state;
+    map.addListener('idle', () => {
+      const bounds = map.getBounds();
+      if (!bounds) return;
+      const northEast = bounds.getNorthEast();
+      const southWest = bounds.getSouthWest();
+      document.dispatchEvent(new CustomEvent('dashvanti:map-bounds-changed', {detail: {
+        mapId: element.id,
+        north: northEast.lat(),
+        east: northEast.lng(),
+        south: southWest.lat(),
+        west: southWest.lng(),
+      }}));
+    });
+    const rows = markerData(element);
+    const results = await Promise.allSettled(rows.map(async (item) => {
+      const hasCoordinates = window.dashvantiValidCoordinates(item);
+      const position = hasCoordinates
+        ? {lat: Number(item.latitude), lng: Number(item.longitude)}
+        : await geocodeAddress(state.geocoder, item.address);
+      return addMarker(state, item, position);
+    }));
+    const found = results.filter((result) => result.status === 'fulfilled').length;
+    if (found > 1) map.fitBounds(state.bounds, 42);
+    else if (found === 1) {
+      map.setCenter(state.bounds.getCenter());
+      map.setZoom(14);
+    }
+    if (element.dataset.mapCurrentLocation === 'true' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((position) => {
+        const current = {lat: position.coords.latitude, lng: position.coords.longitude};
+        new google.maps.Marker({map, position: current, title: 'Your current location', icon: {path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#20583e', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 3}});
+        document.dispatchEvent(new CustomEvent('dashvanti:customer-position', {detail: {
+          mapId: element.id,
+          latitude: current.lat,
+          longitude: current.lng,
+        }}));
+        if (!found) {
+          map.setCenter(current);
+          map.setZoom(13);
+        }
+      }, () => {}, {enableHighAccuracy: true, maximumAge: 10000, timeout: 15000});
+    }
+    setStatus(element, found ? `${found} location${found === 1 ? '' : 's'} pinned` : 'Map ready');
+    if(element.dataset.mapDriverLocation === 'true' && window.dashvantiDriverPosition)updateDriverPosition(state,window.dashvantiDriverPosition);
+    return state;
+  };
+  const selectLocation = async (detail) => {
+    const element = document.getElementById(detail.mapId);
+    if (!element) return;
+    const state = await initializeMap(element);
+    google.maps.event.trigger(state.map, 'resize');
+    let entry = detail.id ? state.markers.get(String(detail.id)) : null;
+    if (!entry && detail.address) entry = state.addresses.get(detail.address.trim().toLowerCase());
+    if (!entry && detail.address) {
+      const item = {id: detail.id || detail.address, name: detail.name || 'Selected location', address: detail.address};
+      entry = {marker: addMarker(state, item, await geocodeAddress(state.geocoder, item.address)), item, position: state.addresses.get(item.address.trim().toLowerCase()).position};
+    }
+    if (!entry) return;
+    state.map.panTo(entry.position);
+    state.map.setZoom(15);
+    entry.marker.setAnimation(google.maps.Animation.BOUNCE);
+    window.setTimeout(() => entry.marker.setAnimation(null), 700);
+  };
+
+  const updateMapPosition = async (detail) => {
+    const element = document.getElementById(detail.mapId);
+    if (!element) return;
+    const latitude = Number(detail.latitude);
+    const longitude = Number(detail.longitude);
+    if (!window.dashvantiValidCoordinates(detail)) return;
+    const state = await initializeMap(element);
+    const key = String(detail.id);
+    const position = {lat: latitude, lng: longitude};
+    let entry = state.markers.get(key);
+    if (entry) {
+      entry.marker.setPosition(position);
+      entry.position = position;
+      entry.item = {...entry.item, ...detail};
+    } else {
+      addMarker(state, {...detail, address: ''}, position);
+      entry = state.markers.get(key);
+    }
+    const bounds = new google.maps.LatLngBounds();
+    state.markers.forEach((value) => bounds.extend(value.position));
+    state.map.fitBounds(bounds, 56);
+    setStatus(element, 'Live locations updated');
+  };
+
+  const emitAddress = (result, label = '') => {
+    const location = result.geometry?.location || result.location;
+    if (!location) return;
+    document.dispatchEvent(new CustomEvent('dashvanti:address-selected', {detail: {
+      address: result.formatted_address || result.formattedAddress || label,
+      latitude: location.lat(),
+      longitude: location.lng(),
+    }}));
+  };
+  let addressLookupVersion=0;
+  const lookupAddress = async (address) => {
+    const version=++addressLookupVersion;
+    await mapsReady;
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({address}, async (results, status) => {
+      if(version!==addressLookupVersion)return;
+      if(status==='OK'&&results?.[0]){emitAddress(results[0],address);return;}
+      try {
+        const {Place}=await google.maps.importLibrary('places');
+        const {places}=await Place.searchByText({textQuery:address,fields:['location','formattedAddress'],maxResultCount:1});
+        if(version!==addressLookupVersion)return;
+        if(places?.[0]?.location){emitAddress(places[0],address);return;}
+        throw new Error('No matching address. Search and choose an address suggestion.');
+      }catch(error){
+        if(version!==addressLookupVersion)return;
+        document.dispatchEvent(new CustomEvent('dashvanti:address-error',{detail:{message:status==='REQUEST_DENIED'?'Address lookup is unavailable. Please choose the address from search suggestions.':error.message}}));
+      }
+    });
+  };
+  document.addEventListener('dashvanti:cancel-address-lookup',()=>{addressLookupVersion++;});
+  const useCurrentAddress = async () => {
+    await mapsReady;
+    if (!navigator.geolocation) {
+      document.dispatchEvent(new CustomEvent('dashvanti:address-error', {detail: {message: 'Live location is unavailable'}}));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition((position) => {
+      const location = {lat: position.coords.latitude, lng: position.coords.longitude};
+      new google.maps.Geocoder().geocode({location}, (results, status) => {
+        if (status === 'OK' && results?.[0]) emitAddress(results[0]);
+        else document.dispatchEvent(new CustomEvent('dashvanti:address-selected', {detail: {
+          address: location.lat.toFixed(5) + ', ' + location.lng.toFixed(5),
+          latitude: location.lat,
+          longitude: location.lng,
+        }}));
+      });
+    }, () => {
+      document.dispatchEvent(new CustomEvent('dashvanti:address-error', {detail: {message: 'Allow location access and try again'}}));
+    }, {enableHighAccuracy: true, maximumAge: 5000, timeout: 15000});
+  };
+  const initializeAddressSearch = async () => {
+    const {PlaceAutocompleteElement} = await google.maps.importLibrary('places');
+    document.querySelectorAll('[data-address-autocomplete]').forEach((widget) => {
+      if (!(widget instanceof PlaceAutocompleteElement)) return;
+      if (widget.hasAttribute('data-saved-address')) {
+        widget.addEventListener('input', () => {
+          const form = widget.closest('form');
+          form.elements.details.value = '';
+          form.elements.place_id.value = '';
+        });
+      }
+      widget.addEventListener('gmp-select', async ({placePrediction}) => {
+        const place = placePrediction.toPlace();
+        try {
+          await place.fetchFields({fields: ['id', 'formattedAddress', 'location']});
+          if (widget.hasAttribute('data-saved-address')) {
+            const form = widget.closest('form');
+            form.elements.details.value = place.formattedAddress || '';
+            form.elements.place_id.value = place.id || '';
+            document.querySelector('[data-address-search-status]').textContent = 'Address selected. Add a label and save.';
+          } else emitAddress(place);
+        } catch (_) {
+          const status = document.querySelector('[data-address-search-status]');
+          if (status) status.textContent = 'Address lookup failed. Please try again.';
+        }
+      });
+    });
+  };
+
+  document.addEventListener('dashvanti:map-select', (event) => selectLocation(event.detail).catch(() => {}));
+  document.addEventListener('dashvanti:map-position', (event) => updateMapPosition(event.detail).catch(() => {}));
+  document.addEventListener('dashvanti:address-geocode', (event) => lookupAddress(event.detail.address).catch(() => {}));
+  document.addEventListener('dashvanti:use-current-location', () => useCurrentAddress().catch(() => {}));
+  mapsReady.then(async () => {
+    await initializeAddressSearch();
+    return Promise.all(mapElements.filter((element) => !element.closest('.is-hidden')).map(initializeMap));
+  }).catch(() => {
+    mapElements.forEach((element) => setStatus(element, 'Map could not load'));
+    document.dispatchEvent(new CustomEvent('dashvanti:address-error', {detail: {message: 'Map could not load'}}));
+  });
+})();

@@ -1,0 +1,50 @@
+import time
+import jwt
+from fastapi import HTTPException
+from sqlalchemy import select
+from backend.config import settings
+from backend.models import User,Driver,Order
+from backend.db import Session
+from backend.gps_config import FINAL
+
+def ticket(scope,user=None,order_id=None):
+    claims={'iss':'dashvanti-gps','aud':'dashvanti-gps','iat':int(time.time()),'exp':int(time.time())+900,'scope':scope,'sub':str(user.id) if user else 'admin','ver':user.token_version if user else 0}
+    if order_id:claims['order_id']=order_id
+    return {'ticket':jwt.encode(claims,settings.jwt_secret,algorithm='HS256'),'driver_id':user.id if user and user.role=='driver' else None,'expires_in':900}
+
+def decode(token,scope,resource=None):
+    claims=jwt.decode(token,settings.jwt_secret,algorithms=['HS256'],issuer='dashvanti-gps',audience='dashvanti-gps',options={'require':['exp','iat','sub','scope','ver']})
+    if claims['scope']!=scope:raise ValueError('Scope mismatch')
+    if scope=='driver' and int(claims['sub'])!=resource:raise ValueError('Driver mismatch')
+    if scope=='order' and claims.get('order_id')!=resource:raise ValueError('Order mismatch')
+    validate(claims)
+    return claims
+
+def validate(claims):
+    if claims['exp']<=time.time():raise ValueError('Expired')
+    if claims['scope']=='admin':return
+    with Session() as db:
+        user=db.get(User,int(claims['sub']))
+        if not user or user.token_version!=claims['ver']:raise ValueError('Session revoked')
+        if claims['scope']=='driver':
+            driver=db.get(Driver,user.id)
+            if user.role!='driver' or not driver or not driver.online:raise ValueError('Driver offline')
+        else:
+            order=db.get(Order,claims['order_id'])
+            owner={'customer': 'customer_id','restaurant':'restaurant_id','driver':'driver_id'}.get(user.role)
+            if not order or not owner or getattr(order,owner)!=user.id or order.status in FINAL:raise ValueError('Order unavailable')
+
+def context(driver_id,version=None):
+    with Session() as db:
+        driver=db.get(Driver,driver_id)
+        if not driver or not driver.online:raise HTTPException(409,'Driver offline')
+        order=db.scalar(select(Order).where(Order.driver_id==driver_id,Order.status.not_in(FINAL)).order_by(Order.id).limit(1))
+        user=db.get(User,driver_id)
+        if version is not None and user.token_version!=version:raise HTTPException(401,'Session revoked')
+        return {'order_id':order.id if order else None,'driver_name':user.name,'status':order.status if order else None}
+
+def visible_order(order_id,driver_id):
+    with Session() as db:
+        order=db.get(Order,order_id)
+        driver=db.get(Driver,driver_id)
+        return bool(order and driver and driver.online and order.driver_id==driver_id and order.status not in FINAL)

@@ -1,0 +1,60 @@
+import uuid
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.views.decorators.http import require_http_methods
+from common_app.api import call, APIError
+from common_app.views import protected
+from .partner_forms import PartnerForm
+
+
+@protected
+@require_http_methods(['GET', 'POST'])
+def dashboard(request):
+    if request.session.get('role') != 'driver': return HttpResponse(status=403)
+    data = call(request, 'GET', '/driver/partner')
+    form = PartnerForm(initial={**data['profile'], 'email': data['email'], 'mobile': data['mobile']})
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        try:
+            if action == 'save':
+                form = PartnerForm(request.POST)
+                if form.is_valid():
+                    payload = dict(form.cleaned_data); payload['date_of_birth'] = payload['date_of_birth'].isoformat()
+                    call(request, 'PUT', '/driver/partner', payload); messages.success(request, 'Registration draft saved.'); return redirect(request.path)
+            elif action == 'submit':
+                call(request, 'POST', '/driver/partner/submit'); messages.success(request, 'Application submitted.'); return redirect(request.path)
+            elif action == 'upload':
+                file = request.FILES.get('document')
+                if not file: raise APIError('Select a document image')
+                payload = {'kind': request.POST.get('kind')}
+                if request.POST.get('expires_on'): payload['expires_on'] = request.POST['expires_on']
+                call(request, 'POST', '/driver/partner/documents', payload, files={'file': (file.name, file.file, file.content_type)})
+                messages.success(request, 'Document uploaded securely.'); return redirect(request.path)
+            elif action == 'deposit':
+                payment = call(request, 'POST', '/driver/partner/deposit')
+                if payment.get('redirect_url'): return redirect(payment['redirect_url'])
+                messages.info(request, 'Deposit status: '+payment['status'])
+            elif action == 'recheck':
+                result = call(request, 'POST', '/driver/partner/deposits/'+str(int(request.POST['deposit_id']))+'/status')
+                messages.info(request, 'Deposit status: '+result['status']); return redirect(request.path)
+            elif action == 'withdraw':
+                call(request, 'POST', '/driver/partner/withdrawals', {'request_key': request.POST.get('request_key') or uuid.uuid4().hex, 'amount': request.POST['amount'], 'currency': request.POST['currency'], 'method': request.POST['method']})
+                messages.success(request, 'Withdrawal request submitted.'); return redirect(request.path)
+            elif action == 'incident':
+                result = call(request, 'POST', '/driver/partner/incidents', {'kind': request.POST['kind'], 'description': request.POST['description']})
+                messages.success(request, f"Incident #{result['incident_id']} reported to operations."); return redirect(request.path)
+        except (APIError, ValueError, KeyError) as exc: messages.error(request, str(exc))
+    earnings = call(request, 'GET', '/driver/partner/earnings')
+    return render(request, 'driver_app/partner.html', {'partner': data, 'form': form, 'earnings': earnings, 'request_key': uuid.uuid4().hex, 'title': 'Driver Partner', 'document_types': ['aadhaar_front','aadhaar_back','pan','license','selfie','rc','insurance','puc','vehicle','nominee_aadhaar']})
+
+
+@protected
+def document(request, document_id):
+    result = call(request, 'GET', f'/driver/partner/documents/{document_id}', raw=True)
+    return HttpResponse(result.content, content_type='image/jpeg', headers={'Cache-Control': 'no-store'})
+
+
+@protected
+def feed(request):
+    return JsonResponse(call(request, 'GET', '/driver/partner'))

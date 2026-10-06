@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, UploadFile, File as UploadField, Form, Query, Response
+from fastapi import Request, APIRouter, Depends, UploadFile, File as UploadField, Form, Query, Response
 from fastapi.responses import FileResponse
 from backend.db import get_db
+from backend.security import optional_user
+from backend.services.restaurant_location_service import customer_scope
 from sqlalchemy import select
 from backend.models import Customer, Restaurant, Driver, File
 from backend.schemas import OrderSoundPreference, RouteDistanceInput, AddressSelection, Profile, AddressInput, RestaurantInput, RestaurantHours, RestaurantAvailability, MenuInput, CartInput, OrderMode, CustomerLocationInput, CheckoutQuote, Checkout, Transition, ReviewInput, Availability, DriverProfile, DriverLocationInput
@@ -14,9 +16,11 @@ driver = role('driver')
 
 @router.get('/me')
 def me(user=Depends(current_user), db=Depends(get_db, scope='function')):
+    from backend.models_driver_partner import DriverPartner
+    application = db.get(DriverPartner, user.id) if user.role == 'driver' else None
     profile_photo = db.scalar(select(File.id).where(File.user_id == user.id, File.purpose == 'profile').order_by(File.id.desc()))
     customer_profile = db.get(Customer, user.id) if user.role == 'customer' else None
-    return {'id':user.id, 'email':user.email, 'name':user.name, 'phone':user.phone, 'role':user.role, 'profile_photo':profile_photo, 'order_mode':customer_profile.order_mode if customer_profile else None, 'restaurant':db.get(Restaurant,user.id) if user.role=='restaurant' else None, 'driver':db.get(Driver,user.id) if user.role=='driver' else None}
+    return {'driver_application': {'status': application.status, 'account_status': application.account_status} if application else None, 'id':user.id, 'email':user.email, 'name':user.name, 'phone':user.phone, 'country':user.country, 'role':user.role, 'profile_photo':profile_photo, 'order_mode':customer_profile.order_mode if customer_profile else None, 'restaurant':db.get(Restaurant,user.id) if user.role=='restaurant' else None, 'driver':db.get(Driver,user.id) if user.role=='driver' else None}
 
 @router.put('/me')
 def profile(data: Profile, user=Depends(current_user), db=Depends(get_db, scope='function')):
@@ -39,12 +43,12 @@ def delete_address(address_id: int, user=Depends(customer), db=Depends(get_db, s
     return user_service.delete_address(db,user,address_id)
 
 @router.get('/restaurants')
-def restaurants(q: str = Query('',max_length=120), cuisine: str = '', veg: bool = False, rating: float = Query(0,ge=0,le=5), delivery_time: int = Query(240,ge=5,le=240), page: int = Query(1,ge=1), page_size: int = Query(24,ge=1,le=100), db=Depends(get_db, scope='function')):
-    return restaurant_service.browse(db,q,cuisine,veg,rating,delivery_time,page,page_size)
+def restaurants(request: Request, user=Depends(optional_user), q: str = Query('',max_length=120), cuisine: str = '', veg: bool = False, rating: float = Query(0,ge=0,le=5), delivery_time: int = Query(240,ge=5,le=240), page: int = Query(1,ge=1), page_size: int = Query(24,ge=1,le=100), db=Depends(get_db, scope='function')):
+    return restaurant_service.browse(db,q,cuisine,veg,rating,delivery_time,page,page_size,scope=customer_scope(db,user,request))
 
 @router.get('/restaurants/suggestions')
-def restaurant_suggestions(q: str = Query('', min_length=1, max_length=120), limit: int = Query(12, ge=1, le=20), db=Depends(get_db, scope='function')):
-    return {'items': restaurant_service.search_suggestions(db, q, limit)}
+def restaurant_suggestions(request: Request, user=Depends(optional_user), q: str = Query('', min_length=1, max_length=120), limit: int = Query(12, ge=1, le=20), db=Depends(get_db, scope='function')):
+    return {'items': restaurant_service.search_suggestions(db, q, limit,scope=customer_scope(db,user,request))}
 
 @router.get('/restaurants/{restaurant_id}')
 def restaurant_detail(restaurant_id: int, db=Depends(get_db, scope='function')):
@@ -108,6 +112,9 @@ def save_customer_location(data: CustomerLocationInput, user=Depends(customer), 
 
 @router.post('/orders', status_code=201)
 def checkout(data: Checkout, user=Depends(customer), db=Depends(get_db, scope='function')):
+    if data.payment_mode == 'PhonePe':
+        from fastapi import HTTPException
+        raise HTTPException(400, 'Use /api/phonepe/pay for PhonePe checkout')
     return order_service.checkout(db,user,data)
 
 @router.get('/orders')
@@ -129,6 +136,11 @@ def reorder(order_id: int, user=Depends(customer), db=Depends(get_db, scope='fun
 @router.post('/orders/{order_id}/review', status_code=201)
 def review(order_id: int, data: ReviewInput, user=Depends(customer), db=Depends(get_db, scope='function')):
     return order_service.review(db,user,order_id,data)
+
+@router.get('/delivery/queue')
+def driver_upcoming_orders(user=Depends(driver),db=Depends(get_db,scope='function')):
+    from backend.services.driver_queue_service import queued
+    return queued(db,user)
 
 @router.get('/delivery/available')
 def available(user=Depends(driver), db=Depends(get_db, scope='function')):
@@ -188,7 +200,7 @@ def checkout_eta(address_id: int | None = None, mode: str = 'delivery', user=Dep
 @router.post('/addresses/select')
 def select_address(data: AddressSelection, user=Depends(customer), db=Depends(get_db, scope='function')):
     address = user_service.save_address(db, user, AddressInput(**data.model_dump()), data.id)
-    user_service.save_current_location(db, user, CustomerLocationInput(latitude=data.latitude, longitude=data.longitude, address=data.details))
+    user_service.save_current_location(db, user, CustomerLocationInput(latitude=data.latitude, longitude=data.longitude, address=data.details, country=data.country))
     return address
 
 
@@ -216,3 +228,16 @@ def order_availability(restaurant_id: int, user=Depends(current_user), db=Depend
 def menu_order_availability(item_id: int, user=Depends(current_user), db=Depends(get_db, scope='function')):
     from backend.services.store_status_service import menu_status
     return menu_status(db, item_id)
+
+@router.post('/drivers/location')
+def drivers_location_alias(data: DriverLocationInput, user=Depends(driver), db=Depends(get_db, scope='function')):
+    return delivery_service.update_location(db, user, data)
+
+@router.get('/orders/{order_id}/driver-location')
+def orders_driver_location_alias(order_id: int, user=Depends(current_user), db=Depends(get_db, scope='function')):
+    return delivery_service.location_for_order(db, user, order_id)
+
+@router.post('/delivery/{order_id}/reject')
+@router.post('/delivery/{order_id}/release')
+def release_delivery_alias(order_id: int, user=Depends(driver), db=Depends(get_db, scope='function')):
+    return delivery_service.release(db, user, order_id)

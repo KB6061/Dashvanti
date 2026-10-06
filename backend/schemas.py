@@ -6,6 +6,8 @@ from pydantic import BaseModel, EmailStr, Field, AliasChoices
 Role = Literal['customer', 'restaurant', 'driver']
 
 class Register(BaseModel):
+    latitude: float | None = Field(default=None,ge=-90,le=90,allow_inf_nan=False)
+    longitude: float | None = Field(default=None,ge=-180,le=180,allow_inf_nan=False)
     email: EmailStr
     password: str = Field(min_length=5)
     name: str = Field(min_length=1, max_length=120)
@@ -25,6 +27,7 @@ class Reset(BaseModel):
     password: str = Field(min_length=5)
 
 class Profile(BaseModel):
+    country: str | None = Field(default=None, max_length=60)
     email: EmailStr | None = None
     name: str = Field(min_length=1, max_length=120)
     phone: str = Field(max_length=30, default='')
@@ -36,12 +39,16 @@ class AddressInput(BaseModel):
     place_id: str | None = Field(default=None, max_length=255)
 
 class AddressSelection(AddressInput):
+    country: str | None = Field(default=None, max_length=60)
     id: int | None = None
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
 
 
 class RestaurantInput(BaseModel):
+    country: str | None = Field(default=None, max_length=60)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(max_length=1000, default='')
     cuisine: str = Field(min_length=1, max_length=80)
@@ -76,6 +83,7 @@ class OrderMode(BaseModel):
     mode: Literal['delivery', 'pickup']
 
 class CustomerLocationInput(BaseModel):
+    country: str | None = Field(default=None, max_length=60)
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
     address: str | None = Field(default=None, max_length=500)
@@ -87,6 +95,7 @@ class CheckoutQuote(BaseModel):
 
 
 class Checkout(CheckoutQuote):
+    payment_mode: Literal['Cash', 'PhonePe'] = 'Cash'
     address_id: int | None = None
     request_key: str = Field(min_length=16, max_length=64)
 
@@ -105,6 +114,7 @@ class DriverLocationInput(BaseModel):
     latitude: float = Field(ge=-90, le=90, allow_inf_nan=False, validation_alias=AliasChoices('latitude','lat'))
     longitude: float = Field(ge=-180, le=180, allow_inf_nan=False, validation_alias=AliasChoices('longitude','lng'))
     heading: float | None = Field(default=None, ge=0, le=360, allow_inf_nan=False)
+    speed: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     driver_id: int | None = Field(default=None, gt=0)
     order_id: int | None = Field(default=None, gt=0)
 
@@ -155,6 +165,9 @@ class MessageInput(BaseModel):
 
 
 class AdminUserCreate(BaseModel):
+    country: str | None = Field(default=None, max_length=60)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     role: Role
     email: EmailStr
     password: str = Field(min_length=5, max_length=128)
@@ -176,6 +189,9 @@ class AdminUserCreate(BaseModel):
 
 
 class AdminUserUpdate(BaseModel):
+    country: str | None = Field(default=None, max_length=60)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     email: EmailStr | None = None
     password: str | None = Field(default=None, min_length=5, max_length=128)
     name: str | None = Field(default=None, min_length=1, max_length=120)

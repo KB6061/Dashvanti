@@ -1,0 +1,72 @@
+import logging
+import os
+import smtplib
+import time
+import threading
+from email.message import EmailMessage
+import httpx
+from sqlalchemy import select
+from backend.db import Session
+from backend.models_driver_partner import DriverPartnerNotice, DriverPushDevice
+from backend.models import User
+from backend.services.driver_offer_service import tick
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger('driver-partners')
+
+
+def send(row):
+    if row.channel == 'PUSH':
+        if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'): return False
+        import firebase_admin
+        from firebase_admin import messaging
+        if not firebase_admin._apps: firebase_admin.initialize_app()
+        with Session() as db:
+            device = db.get(DriverPushDevice, row.recipient)
+            user = db.get(User, row.driver_id)
+            if not device or not user or device.driver_id != row.driver_id or device.token_version != user.token_version: return True
+            messaging.send(messaging.Message(token=device.token, notification=messaging.Notification(title='Dashvanti Driver Partner', body=row.body), data={'event': row.event, 'driver_id': str(row.driver_id)}, android=messaging.AndroidConfig(priority='high'), webpush=messaging.WebpushConfig(fcm_options=messaging.WebpushFCMOptions(link='https://driver.dashvanti.com/driver/dashboard'))))
+    elif row.channel == 'SMS':
+        account = os.getenv('TWILIO_ACCOUNT_SID')
+        token = os.getenv('TWILIO_AUTH_TOKEN')
+        sender = os.getenv('TWILIO_PHONE_NUMBER')
+        if not all((account, token, sender)): return False
+        result = httpx.post(f'https://api.twilio.com/2010-04-01/Accounts/{account}/Messages.json', auth=(account, token), data={'From': sender, 'To': row.recipient, 'Body': row.body}, timeout=15)
+        result.raise_for_status()
+    elif row.channel == 'EMAIL':
+        host = os.getenv('SMTP_HOST'); sender = os.getenv('SMTP_FROM')
+        if not host or not sender: return False
+        message = EmailMessage(); message['Subject'] = 'Dashvanti Driver Partner'; message['From'] = sender; message['To'] = row.recipient; message.set_content(row.body)
+        with smtplib.SMTP(host, int(os.getenv('SMTP_PORT', '587')), timeout=15) as smtp:
+            smtp.starttls()
+            if os.getenv('SMTP_USER'): smtp.login(os.environ['SMTP_USER'], os.environ['SMTP_PASSWORD'])
+            smtp.send_message(message)
+    return True
+
+
+def run_once():
+    with Session() as db:
+        rows = db.scalars(select(DriverPartnerNotice).where(DriverPartnerNotice.status == 'PENDING', DriverPartnerNotice.attempts < 5).order_by(DriverPartnerNotice.id).limit(10).with_for_update(skip_locked=True))
+        for row in rows:
+            try:
+                if send(row): row.status = 'SENT'
+            except Exception:
+                row.attempts += 1
+                if row.attempts >= 5: row.status = 'FAILED'
+                log.warning('Notification %s failed; attempt %s', row.id, row.attempts)
+        db.commit()
+
+
+if __name__ == '__main__':
+    def notifications():
+        while True:
+            try: run_once()
+            except Exception: log.exception('Driver partner notifications failed')
+            time.sleep(10)
+    threading.Thread(target=notifications, daemon=True).start()
+    while True:
+        try:
+            with Session() as db:
+                tick(db); db.commit()
+        except Exception: log.exception('Driver partner worker failed')
+        time.sleep(2)

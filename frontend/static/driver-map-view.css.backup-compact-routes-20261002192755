@@ -1,0 +1,28 @@
+.driver-portal .driver-navigation-shell{display:block!important;width:100%;padding:0!important;min-width:0;border-radius:18px;overflow:hidden;background:#fff}
+.driver-portal .driver-map-window{position:relative;width:100%;min-width:0}
+.driver-portal .driver-map-window [data-google-map]{width:100%;height:78dvh!important;min-height:480px!important}
+.driver-map-toolbar{position:absolute;right:10px;top:10px;z-index:12;display:flex;gap:8px}
+.driver-portal .driver-map-toolbar button{width:auto!important;min-width:44px;min-height:44px;background:#fff!important;color:#163e35!important;border:1px solid #d5dfda;border-radius:12px;padding:10px;font-weight:700;box-shadow:0 2px 10px #0002}
+.driver-map-toolbar button[hidden]{display:none!important}
+.driver-portal .driver-navigation-shell .navigation-bottom-controls{position:relative;display:flex;justify-content:center;flex-wrap:wrap;margin:0;border-radius:0;padding:12px;background:#f4f7f5;box-shadow:none;max-width:none;gap:10px}
+.driver-portal .driver-navigation-shell .navigation-bottom-controls .navigation-voice-toggle{width:auto;max-width:none;min-width:112px}
+.driver-portal .driver-navigation-shell .navigation-bottom-controls small{position:static;max-width:none!important;width:100%;margin:0!important;text-align:center}
+.driver-portal .driver-navigation-shell .driver-floating-navigate{position:static;left:auto;right:auto;bottom:auto;z-index:auto;width:auto;min-height:44px;padding:8px 12px;border-radius:10px;box-shadow:none;font-size:14px}
+.driver-portal .driver-navigation-shell .navigation-instruction{background:#18352e}
+.driver-navigation-arrival{display:flex;align-items:center;justify-content:space-around;background:#fff;padding:16px 12px;border-top:1px solid #e1e7e3;border-radius:0 0 18px 18px}
+.driver-navigation-arrival div{display:grid;gap:3px;text-align:center}.driver-navigation-arrival strong{font-size:25px;line-height:1.1;color:#183a32}.driver-navigation-arrival span{font-size:13px;color:#64736d}
+.driver-navigation-speed{position:absolute;top:150px;left:12px;z-index:10;display:grid;gap:2px;text-align:center;padding:8px 10px;border:2px solid #23352d;background:#fff;color:#182e26;border-radius:9px;box-shadow:0 2px 8px #0002;pointer-events:none}
+.driver-navigation-speed strong{font-size:24px;line-height:1}.driver-navigation-speed span{font-size:12px;font-weight:700}
+.driver-portal .driver-navigation-shell .tracking-eta-timeline{display:flex;flex-direction:row!important;align-items:center;gap:4px 8px;flex-wrap:wrap;position:static;margin:0;padding:4px 12px;background:transparent;box-shadow:none;border:0;border-radius:0;font-size:12px;line-height:1.2;color:#52645b}
+.driver-portal .driver-navigation-shell .tracking-eta-timeline strong{font-size:12px;width:auto;font-weight:500}.driver-portal .driver-navigation-shell .tracking-eta-timeline[hidden]{display:none!important}
+.driver-portal .driver-navigation-shell .navigation-instruction{display:grid;grid-template-columns:34px 1fr;gap:3px 10px;text-align:left;box-sizing:border-box;margin:64px 10px 10px;width:calc(100% - 20px);max-width:520px;background:#18352eea;padding:12px 14px;border-radius:18px}
+.navigation-maneuver{grid-column:1;grid-row:1/4;align-self:center;display:block;font-size:30px!important;color:white;line-height:1}
+.driver-portal .navigation-instruction [data-next-distance]{font-size:20px;grid-column:2}.driver-portal .navigation-instruction [data-next-instruction]{font-size:17px;grid-column:2;line-height:1.25}.driver-portal .navigation-instruction [data-current-street]{font-size:13px;grid-column:2;color:#d3ded8;line-height:1.2}
+.driver-portal .driver-navigation-shell .navigation-alternatives{margin-bottom:52px;max-width:calc(100% - 24px)}
+.driver-portal .driver-navigation-shell .navigation-recenter{margin-bottom:30px}
+.driver-portal .driver-navigation-full{position:fixed!important;inset:0!important;z-index:10000!important;display:flex!important;flex-direction:column;border-radius:0;max-width:none!important;height:100dvh;width:100vw!important;margin:0!important;padding:0!important}
+.driver-navigation-full .driver-map-window{flex:1;min-height:0}.driver-portal .driver-navigation-full .driver-map-window [data-google-map]{height:100%!important;min-height:0!important}
+.driver-navigation-full .navigation-bottom-controls,.driver-navigation-full .driver-navigation-arrival{flex-shrink:0}.driver-navigation-full .driver-navigation-arrival{border-radius:0;padding-bottom:max(16px,env(safe-area-inset-bottom))}
+.driver-portal .driver-navigation-full .tracking-eta-timeline{position:static;top:auto;bottom:auto;left:auto;right:auto;max-width:none;flex-shrink:0;background:transparent;font-size:11px;padding:3px 12px;border-radius:0}
+.driver-portal .driver-navigation-full .navigation-instruction{margin-top:64px}.driver-map-open{overflow:hidden!important}.navigation-hidden-in-full-map{display:none!important}
+@media(max-width:600px){.driver-portal .driver-navigation-shell .driver-map-window [data-google-map]{height:76dvh!important;min-height:450px!important}.driver-portal .driver-navigation-full .driver-map-window [data-google-map]{height:100%!important;min-height:0!important}.driver-navigation-speed{top:195px}.driver-portal .driver-navigation-shell .navigation-instruction{max-width:calc(100vw - 20px)}.driver-portal .driver-navigation-shell .navigation-alternatives button{min-width:92px;max-width:115px}.driver-navigation-arrival strong{font-size:24px}}

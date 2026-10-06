@@ -1,0 +1,17 @@
+[Unit]
+Description=Dashvanti Redis GPS cache
+After=network.target
+
+[Service]
+User=krishna
+Group=krishna
+ExecStart=/opt/dashvanti-redis/bin/redis-server /home/krishna/food/deploy/streaming/redis.conf
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/dashvanti-redis
+
+[Install]
+WantedBy=multi-user.target

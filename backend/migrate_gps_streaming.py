@@ -1,0 +1,7 @@
+from backend.db import engine
+from backend import models
+from backend.models_gps import EssentialGPSPoint
+
+if __name__=='__main__':
+    EssentialGPSPoint.__table__.create(engine,checkfirst=True)
+    print('Essential GPS point schema ready')

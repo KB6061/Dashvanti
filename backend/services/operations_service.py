@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, func, or_, select, update
 from backend.models import (
     Address, AuditEvent, CartItem, Customer, CustomerLocation, DeliveryStatus,
-    Driver, DriverLocation, File, MenuItem, Notification, Order, OrderItem,
+    Driver, DriverLocation, DriverLocationHistory, File, MenuItem, Notification, Order, OrderItem, PayoutTransaction,
     OrderMessage, PasswordReset, PlatformContent, Promotion, Rating, Restaurant,
     RestaurantPresentation, Review, SupportTicket, User,
 )
@@ -105,8 +105,15 @@ def save_banner(db, data):
 def list_promotions(db):
     return home(db)['promotions']
 
+def admin_promotions(db):
+    return list(db.scalars(select(Promotion).order_by(Promotion.id.desc())))
+
+
 def save_promotion(db, data, promotion_id=None):
     payload = data.model_dump()
+    duplicate = db.scalar(select(Promotion.id).where(Promotion.code == payload['code'].upper(), Promotion.id != (promotion_id or 0)))
+    if duplicate:
+        raise HTTPException(409, 'Promotion code already exists')
     if payload['ends_at'] and payload['starts_at'] and payload['ends_at'] <= payload['starts_at']:
         raise HTTPException(422, 'Promotion end must be after its start')
     row = db.get(Promotion, promotion_id) if promotion_id else None
@@ -130,6 +137,11 @@ def delete_promotion(db, promotion_id):
     return {'deleted': promotion_id}
 
 def _order(db, user, order_id):
+    if user.role == 'admin':
+        order = db.get(Order, order_id)
+        if not order:
+            raise HTTPException(404, 'Order not found')
+        return order
     return order_service.owned(db, user, order_id)
 
 def create_ticket(db, user, data):
@@ -168,24 +180,65 @@ def update_ticket(db, ticket_id, data):
     db.flush()
     return ticket_data(db, row)
 
+def admin_update_order(db, order_id, status):
+    allowed = {'PLACED', 'ACCEPTED', 'CONFIRMED', 'PREPARING', 'PACKING', 'WRAPPING_UP', 'READY_FOR_PICKUP', 'ON_THE_WAY_TO_RESTAURANT', 'ARRIVED_AT_RESTAURANT', 'PICKED_UP', 'ON_THE_WAY_TO_CUSTOMER', 'DELIVERED', 'CANCELLED', 'REJECTED'}
+    if status not in allowed:
+        raise HTTPException(422, 'Invalid order status')
+    order = db.get(Order, order_id)
+    if not order:
+        raise HTTPException(404, 'Order not found')
+    if order.status in {'PAYMENT_PENDING', 'PAYMENT_FAILED', 'SANDBOX_PAID'}:
+        raise HTTPException(409, 'Payment must be verified before this order can be dispatched')
+    order.status = status
+    if status in {'CANCELLED','REJECTED','DELIVERED'}:
+        from backend.services.driver_queue_service import drop
+        drop(db,order.id,'Upcoming order was updated by admin.')
+    db.add(DeliveryStatus(order_id=order.id, status=status))
+    for user_id in {order.customer_id, order.restaurant_id, order.driver_id} - {None}:
+        notify(db, user_id, 'order-status', f'Order #{order.id} status changed to {status.replace("_", " ").title()} by admin.', order.id)
+    audit(db, None, 'admin-order-status-updated', f'order:{order.id}', status)
+    db.flush()
+    return {'id': order.id, 'status': order.status}
+
+def admin_delete_order(db, order_id):
+    return admin_update_order(db, order_id, 'CANCELLED')
+
 def messages(db, user, order_id):
     _order(db, user, order_id)
     rows = list(db.scalars(select(OrderMessage).where(OrderMessage.order_id == order_id).order_by(OrderMessage.id).limit(500)))
     return [
-        {'id': row.id, 'body': row.body, 'created_at': row.created_at, 'user_id': row.user_id,
-         'user_name': (db.get(User, row.user_id).name if db.get(User, row.user_id) else '')}
+        {'id': row.id, 'body': row.body, 'created_at': row.created_at, 'order_id': row.order_id, 'user_id': row.user_id,
+         'user_name': (db.get(User, row.user_id).name if db.get(User, row.user_id) else ''),
+         'user_role': (db.get(User, row.user_id).role if db.get(User, row.user_id) else '')}
         for row in rows
     ]
+
+def admin_identity(db):
+    from secrets import token_urlsafe
+    from sqlalchemy import text
+    from backend.services.auth_service import passwords
+    db.execute(text('SELECT pg_advisory_xact_lock(428425808)'))
+    user = db.scalar(select(User).where(User.role == 'admin').order_by(User.id).limit(1))
+    if user is None:
+        user = User(email='system-admin@dashvanti.invalid', name='System Admin',
+                    role='admin', password=passwords.hash(token_urlsafe(48)))
+        db.add(user)
+        db.flush()
+    return user
+
 
 def send_message(db, user, order_id, data):
     order = _order(db, user, order_id)
     row = OrderMessage(order_id=order.id, user_id=user.id, body=data.body)
     db.add(row)
-    for participant in {order.customer_id, order.restaurant_id, order.driver_id} - {None, user.id}:
-        notify(db, participant, 'order-message', f'New message for order #{order.id}.', order.id)
+    recipients = {order.customer_id, order.restaurant_id, order.driver_id} - {None, user.id}
+    recipients.update(row.id for row in db.scalars(select(User).where(User.role == 'admin')))
+    sender = f'{user.role} {user.name}'
+    for participant in recipients:
+        notify(db, participant, 'order-message', f'New message from {sender} for order #{order.id}.', order.id)
     audit(db, user.id, 'order-message-sent', f'order:{order.id}')
     db.flush()
-    return {'id': row.id, 'body': row.body, 'created_at': row.created_at, 'user_id': user.id, 'user_name': user.name}
+    return {'id': row.id, 'body': row.body, 'created_at': row.created_at, 'order_id': order.id, 'user_id': user.id, 'user_name': user.name, 'user_role': user.role}
 
 def notifications(db, user):
     rows = list(db.scalars(select(Notification).where(Notification.user_id == user.id).order_by(Notification.id.desc()).limit(100)))
@@ -205,11 +258,13 @@ def audit_events(db):
 
 
 def _admin_user_data(user, restaurant=None, driver=None, customer=None):
-    data = {'id': user.id, 'role': user.role, 'email': user.email, 'name': user.name, 'phone': user.phone or ''}
+    data = {'id': user.id, 'role': user.role, 'email': user.email, 'name': user.name, 'phone': user.phone or '', 'country': user.country}
     if user.role == 'customer':
         data.update(order_mode=customer.order_mode if customer else 'delivery')
     elif user.role == 'restaurant':
         data.update(
+            country=restaurant.country if restaurant else None,
+            latitude=restaurant.latitude if restaurant else None, longitude=restaurant.longitude if restaurant else None,
             restaurant_name=restaurant.name if restaurant else user.name,
             description=(restaurant.description or '') if restaurant else '',
             cuisine=restaurant.cuisine if restaurant else '',
@@ -273,7 +328,11 @@ def admin_create_user(db, data):
     email = str(payload['email']).strip().lower()
     if db.scalar(select(User.id).where(User.email == email)):
         raise HTTPException(409, 'Email already registered')
-    user = User(email=email, password=passwords.hash(payload['password']), role=payload['role'], name=payload['name'].strip(), phone=payload['phone'].strip())
+    from backend.services.geo_service import normalize_country
+    from backend.services.restaurant_location_service import configure_restaurant
+    country=normalize_country(payload.get('country'))
+    if payload.get('country') and not country:raise HTTPException(422,'Use India or a two-letter country code')
+    user = User(country=country,email=email, password=passwords.hash(payload['password']), role=payload['role'], name=payload['name'].strip(), phone=payload['phone'].strip())
     db.add(user)
     db.flush()
     restaurant = driver = customer = None
@@ -287,6 +346,7 @@ def admin_create_user(db, data):
             kind=payload['kind'], address=payload['address'].strip(), is_open=payload['is_open'],
             opening=payload['opening'], closing=payload['closing'], delivery_minutes=payload['delivery_minutes'],
         )
+        configure_restaurant(restaurant,payload)
         db.add(restaurant)
     else:
         driver = Driver(id=user.id, online=payload['online'], vehicle_type=payload['vehicle_type'].strip(), vehicle_number=payload['vehicle_number'].strip())
@@ -302,6 +362,11 @@ def admin_update_user(db, user_id, data):
     if not user:
         raise HTTPException(404, 'User not found')
     payload = data.model_dump(exclude_unset=True)
+    if payload.get('country'):
+        from backend.services.geo_service import normalize_country
+        country=normalize_country(payload['country'])
+        if not country:raise HTTPException(422,'Use India or a two-letter country code')
+        user.country=country
     if 'email' in payload:
         email = str(payload['email']).strip().lower()
         duplicate = db.scalar(select(User.id).where(User.email == email, User.id != user.id))
@@ -318,11 +383,14 @@ def admin_update_user(db, user_id, data):
     driver = db.get(Driver, user.id) if user.role == 'driver' else None
     customer = db.get(Customer, user.id) if user.role == 'customer' else None
     if restaurant:
+        previous_address=restaurant.address
         field_map = {'restaurant_name': 'name', 'description': 'description', 'cuisine': 'cuisine', 'kind': 'kind', 'address': 'address', 'is_open': 'is_open', 'opening': 'opening', 'closing': 'closing', 'delivery_minutes': 'delivery_minutes'}
         for source, target in field_map.items():
             if source in payload:
                 value = payload[source]
                 setattr(restaurant, target, value.strip() if isinstance(value, str) else value)
+        from backend.services.restaurant_location_service import configure_restaurant
+        configure_restaurant(restaurant,payload,previous_address)
     if driver:
         for key in ('online', 'vehicle_type', 'vehicle_number'):
             if key in payload:
@@ -338,7 +406,7 @@ def admin_update_user(db, user_id, data):
 def _delete_order_records(db, order_ids):
     if not order_ids:
         return
-    for model in (DeliveryStatus, Rating, Review, OrderItem, OrderMessage, Notification, SupportTicket):
+    for model in (DeliveryStatus, Rating, Review, OrderItem, OrderMessage, Notification, SupportTicket, PayoutTransaction, DriverLocationHistory):
         db.execute(delete(model).where(model.order_id.in_(order_ids)))
     db.execute(delete(Order).where(Order.id.in_(order_ids)))
 
@@ -366,12 +434,16 @@ def admin_delete_user(db, user_id):
         db.execute(delete(MenuItem).where(MenuItem.restaurant_id == user_id))
         db.execute(delete(Restaurant).where(Restaurant.id == user_id))
     elif role_name == 'driver':
+        db.execute(delete(DriverLocationHistory).where(DriverLocationHistory.driver_id == user_id))
         db.execute(update(Order).where(Order.driver_id == user_id).values(driver_id=None))
         db.execute(delete(DriverLocation).where(DriverLocation.driver_id == user_id))
         db.execute(delete(Driver).where(Driver.id == user_id))
     else:
         raise HTTPException(422, 'Unsupported user role')
+    db.execute(delete(PayoutTransaction).where(PayoutTransaction.payee_id == user_id, PayoutTransaction.payee_role == role_name))
     file_ids = select(File.id).where(File.user_id == user_id)
+    db.execute(update(RestaurantPresentation).where(RestaurantPresentation.cover_file_id.in_(file_ids)).values(cover_file_id=None))
+    db.execute(update(RestaurantPresentation).where(RestaurantPresentation.logo_file_id.in_(file_ids)).values(logo_file_id=None))
     db.execute(update(PlatformContent).where(PlatformContent.media_file_id.in_(file_ids)).values(media_file_id=None))
     db.execute(delete(PasswordReset).where(PasswordReset.user_id == user_id))
     db.execute(delete(OrderMessage).where(OrderMessage.user_id == user_id))
@@ -381,4 +453,5 @@ def admin_delete_user(db, user_id):
     db.execute(delete(File).where(File.user_id == user_id))
     db.delete(user)
     audit(db, None, 'admin-user-deleted', f'user:{user_id}', f'role={role_name}')
+    db.flush()
     return {'deleted': user_id, 'role': role_name}

@@ -1,0 +1,10 @@
+<details class="admin-payout-action"><summary>Payout {{ payee_role }}</summary>
+  <form data-no-ajax="true" method="post" data-payout-form>{% csrf_token %}
+    <input type="hidden" name="action" value="quick_pay"><input type="hidden" name="order_id" value="{{ row.order_id }}"><input type="hidden" name="payee_role" value="{{ payee_role }}">
+    <input type="hidden" name="expected_amount" value="{% if payee_role == 'driver' %}{{ row.driver_remaining }}{% else %}{{ row.restaurant_remaining }}{% endif %}">
+    <strong>USD {% if payee_role == 'driver' %}{{ row.driver_remaining }}{% else %}{{ row.restaurant_remaining }}{% endif %}</strong>
+    <label>Mode<select name="payout_mode">{% if payout_settings.manual_enabled %}<option value="manual">Manual transfer receipt</option>{% endif %}{% if payout_settings.automated_enabled %}<option value="stripe">Stripe Connect · {{ payout_settings.environment }}</option>{% endif %}</select></label>
+    <label data-manual-confirmation>Bank/payment confirmation<input name="confirmation" minlength="3" maxlength="120" placeholder="Completed transfer reference"></label>
+    <button type="submit" {% if not payout_settings.manual_enabled and not payout_settings.automated_enabled %}disabled{% endif %}>Confirm payout</button>
+  </form>
+</details>

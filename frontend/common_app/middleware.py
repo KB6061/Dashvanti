@@ -1,5 +1,5 @@
 import time
-from common_app.logging_support import client_ip, configure_logging, log_request, user_id
+from common_app.logging_support import _map_related, client_ip, configure_logging, log_request, user_id
 
 from django.conf import settings
 from django.http import HttpResponseNotFound
@@ -19,11 +19,15 @@ class PortalScopeMiddleware:
         return self.get_response(request)
 
     def _scope_response(self, request):
-        if request.path in {'/favicon.ico'}:
+        if request.path in {'/favicon.ico', '/about-us', '/sounds/arrival.mp3'}:
             return None
+        if self.portal == 'main':
+            return None if request.path == '/' else HttpResponseNotFound('Portal not available on this port')
         if request.path == '/':
             if self.portal == 'customer':
-                return redirect('/customer/restaurants' if request.session.get('token') and request.session.get('role') == 'customer' else '/customer/login')
+                if request.session.get('token') and request.session.get('role') == 'customer':
+                    return redirect('/customer/restaurants')
+                return None
             if self.portal in {'restaurant', 'driver'}:
                 return redirect(f'/{self.portal}/dashboard' if request.session.get('token') and request.session.get('role') == self.portal else f'/{self.portal}/login')
             if self.portal == 'admin':
@@ -43,7 +47,10 @@ class UIActivityLogMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
         self.logger = configure_logging(
-            'dashvanti.portal.requests', getattr(settings, 'DJANGO_ACTIVITY_LOG', None)
+            "dashvanti.portal.requests", getattr(settings, "DJANGO_ACTIVITY_LOG", None)
+        )
+        self.tracking_logger = configure_logging(
+            "dashvanti.portal.live_tracking", getattr(settings, "DJANGO_TRACKING_LOG", None)
         )
 
     def __call__(self, request):
@@ -61,7 +68,7 @@ class UIActivityLogMiddleware:
         finally:
             session = getattr(request, 'session', {})
             log_request(
-                self.logger, request.path, status, started,
+                self.tracking_logger if _map_related(request.path) else self.logger, request.path, status, started,
                 getattr(request, '_log_identity', identity) if getattr(request, '_log_identity', identity) != '-' else self._identity(request),
                 client_ip(request.META.get('REMOTE_ADDR', '-'),
                           request.META.get('HTTP_X_FORWARDED_FOR', '')),

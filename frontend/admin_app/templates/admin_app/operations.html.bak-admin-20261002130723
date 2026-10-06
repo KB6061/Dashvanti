@@ -1,0 +1,8 @@
+{% extends 'admin_app/admin_base.html' %}
+{% block admin_content %}
+<div class="admin-title"><div><h1>Settings & Support</h1><span class="admin-live">Audit enabled</span></div><p>Support ticket controls and permanent admin change history.</p></div>
+<div class="admin-settings-grid">
+<section class="admin-panel"><h2>Support tickets</h2>{% for ticket in tickets %}<article class="admin-ticket"><div><strong>#{{ ticket.id }} · {{ ticket.subject }}</strong><span class="admin-status">{{ ticket.status }}</span></div><p>{{ ticket.user_name }}{% if ticket.order_id %} · Order #{{ ticket.order_id }}{% endif %}</p><p>{{ ticket.description }}</p><form method="post" class="admin-edit-grid">{% csrf_token %}<input type="hidden" name="ticket_id" value="{{ ticket.id }}"><label>Status<select name="status"><option value="open" {% if ticket.status == 'open' %}selected{% endif %}>Open</option><option value="working" {% if ticket.status == 'working' %}selected{% endif %}>Working</option><option value="resolved" {% if ticket.status == 'resolved' %}selected{% endif %}>Resolved</option></select></label><label>Resolution<textarea name="resolution" maxlength="2000" rows="2">{{ ticket.resolution }}</textarea></label><button>Save</button></form></article>{% empty %}<p>No support tickets.</p>{% endfor %}</section>
+<section class="admin-panel"><h2>Recent audit activity</h2><div class="admin-audit">{% for event in audit_events %}<article><strong>{{ event.action }}</strong><span>{{ event.target }}</span><small>{{ event.created_at }}</small></article>{% empty %}<p>No audited changes yet.</p>{% endfor %}</div></section>
+</div>
+{% endblock %}

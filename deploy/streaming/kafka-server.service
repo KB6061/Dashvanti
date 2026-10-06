@@ -1,0 +1,20 @@
+[Unit]
+Description=Dashvanti Kafka GPS broker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=krishna
+Group=krishna
+Environment=KAFKA_HEAP_OPTS=-Xms192m -Xmx256m
+Environment=KAFKA_JVM_PERFORMANCE_OPTS=-XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:MaxMetaspaceSize=192m -Djava.awt.headless=true
+Environment=LOG_DIR=/var/log/dashvanti-kafka
+ExecStart=/opt/dashvanti-kafka/bin/kafka-server-start.sh /home/krishna/food/deploy/streaming/kafka.properties
+Restart=always
+RestartSec=5
+TimeoutStopSec=60
+LimitNOFILE=65536
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="driver-console">
+<aside class="driver-sidebar"><div class="driver-sidebar-label">Driver workspace</div><nav><a class="active" href="/driver/dashboard">Dashboard</a><a href="/driver/orders">Order History</a><a href="/driver/payments">Payment</a><a href="/driver/earnings">Earning Reports</a><a href="/driver/profile">Profile</a><a href="/driver/files">Support</a></nav></aside>
+<div class="driver-workspace"><header class="driver-topbar"><p class="eyebrow">Driver command center</p><h1>Driver Dashboard</h1></header>
+<section class="driver-welcome"><div class="driver-avatar">{{ me.name|default:"D"|first|upper }}</div><div><h2>Welcome back, {{ me.name|default:"Driver" }}</h2><div class="driver-badges"><span>{{ active_orders|length }} Active</span><span>{{ available|length }} New Orders</span><span data-driver-online-label>{% if profile.online %}Online{% else %}Offline{% endif %}</span></div></div><div class="driver-presence-controls" role="group" aria-label="Driver availability">{% csrf_token %}<button type="button" data-driver-presence="ONLINE" aria-pressed="false">Go Online</button><button type="button" data-driver-presence="BREAK" aria-pressed="false">Take Break</button><button type="button" data-driver-presence="HOME" aria-pressed="false">Go Home</button><small data-presence-status role="status"></small></div><form method="post" class="driver-location-form" data-driver-location>{% csrf_token %}<input type="hidden" name="dashboard_action" value="location"><input type="hidden" name="latitude"><input type="hidden" name="longitude"><input type="hidden" name="heading"></form></section>
+
+<!-- Set Current Address & Location Panel with Places Autocomplete -->
+<section class="driver-address-panel" style="background:#fff; border:1px solid #cbdedb; border-radius:8px; padding:14px; margin:10px 12px; box-shadow:0 4px 12px #0a3f440c;">
+  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+    <h2 style="font-size:15px; margin:0; text-transform:uppercase; color:#113131; font-weight:850;">📍 Driver Location & Auto Address</h2>
+    <div id="driver-location-badge" style="background:#e8f6f4; color:#0b6569; border:1px solid #bceee7; padding:6px 14px; border-radius:20px; font-weight:800; font-size:13px;">
+      📍 Detecting live GPS address…
+    </div>
+  </div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <input type="text" id="driver-address-input" placeholder="Type an address for automatic suggestions..." style="flex:1; min-width:260px; padding:10px 14px; border:1px solid #b9dcd8; border-radius:8px; font-size:14px; font-weight:600; outline:none;">
+    <button type="button" id="btn-set-driver-address" style="background:#0b6569; color:#fff; border:none; padding:10px 18px; border-radius:8px; font-weight:850; font-size:13px; cursor:pointer;">
+      📍 Set Address
+    </button>
+    <button type="button" id="btn-use-live-gps" style="background:#174243; color:#fff; border:none; padding:10px 18px; border-radius:8px; font-weight:850; font-size:13px; cursor:pointer;">
+      🎯 Use Live GPS
+    </button>
+  </div>
+  <div id="driver-address-status" style="margin-top:8px; font-size:13px; font-weight:700; color:#0b6569;"></div>
+</section>
+
+<section class="driver-map-panel"><h2>Active Orders &amp; Live Location Map</h2>{{ map_markers|json_script:"driver-map-markers" }}<div id="driver-live-map" class="driver-map dashvanti-google-map" data-google-map data-map-markers-id="driver-map-markers" data-map-driver-location="true" aria-label="Driver active delivery map"></div><p class="map-load-status" data-map-status>Loading map…</p></section>
+
+<section class="driver-jobs-panel driver-live-status">
+  <div class="panel-head"><h2>Live delivery status</h2><a href="/driver/orders">View order history</a></div>
+  {% for order in active_orders %}
+    <article class="driver-job-card active" data-live-order-id="{{ order.id }}">
+      <strong>Order #{{ order.id }}</strong>
+      <p><b>Pickup</b> {{ order.restaurant_name }}</p>
+      <p><b>Drop-off</b> {{ order.address }}</p>
+      <small>{{ order.status|title }} &middot; ${{ order.delivery_fee }}</small>
+      <div class="driver-actions">
+        <a class="driver-navigate" href="/driver/order/{{ order.id }}">Navigate</a>
+        {% for value,label in order.actions %}
+          <form method="post" action="/driver/order/{{ order.id }}">
+            {% csrf_token %}
+            <button name="status" value="{{ value }}">{{ label }}</button>
+          </form>
+        {% endfor %}
+      </div>
+    </article>
+  {% empty %}
+    <p class="driver-empty">No active delivery right now.</p>
+  {% endfor %}
+
+</section>
+<section class="driver-jobs-panel driver-upcoming-panel" id="upcoming-order">
+  <div class="panel-head"><h2>Upcoming delivery</h2><small>Starts after your current delivery</small></div>
+  {% for order in queued %}
+  <article class="driver-job-card" data-live-order-id="{{ order.id }}">
+    <strong>Queued order #{{ order.id }}</strong>
+    <p><b>Restaurant:</b> {{ order.restaurant_name }} · {{ order.restaurant_address }}</p>
+    <p><b>Delivery address:</b> {{ order.address }}</p>
+    <p>Estimated pickup: {{ order.pickup_eta_minutes }} min · Delivery: {{ order.delivery_eta_minutes }} min</p>
+    <form method="post" action="/driver/order/{{ order.id }}/reject">{% csrf_token %}<button>Release upcoming order</button></form>
+  </article>
+  {% empty %}<p class="driver-empty">You can accept one upcoming order while completing your current delivery.</p>{% endfor %}
+</section>
+<section class="driver-jobs-panel driver-requests-panel" id="order-requests">
+  <div class="panel-head"><h2>Order requests <span>{{ available|length }}</span></h2><small>Unassigned deliveries · updates automatically</small></div>
+  {% for order in available %}
+    <article class="driver-job-card" data-live-order-id="{{ order.id }}">
+      <strong>Order request #{{ order.id }}</strong>
+      <p><b>Restaurant:</b> {{ order.restaurant_name }}</p>
+      <p><b>Delivery Address:</b> {{ order.address }}</p>
+      <p>Estimated pickup: {{ order.pickup_eta_minutes }} min · Delivery: {{ order.delivery_eta_minutes }} min{% if order.upcoming %} · After order #{{ order.current_order_id }}{% endif %}</p>
+      {% for item in order.items %}<small>{{ item.quantity }} × {{ item.name }}</small>{% endfor %}
+      <small>Earn ${{ order.delivery_fee }}</small>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <form method="post" action="/driver/order/{{ order.id }}/accept" style="margin:0;">
+          {% csrf_token %}
+          <button style="background:#0b8582; color:#fff; border:none; border-radius:6px; padding:8px 14px; font-weight:850; cursor:pointer;">Accept Job</button>
+        </form>
+        <form method="post" action="/driver/order/{{ order.id }}/reject" style="margin:0;">
+          {% csrf_token %}
+          <button style="background:#c53424; color:#fff; border:none; border-radius:6px; padding:8px 14px; font-weight:850; cursor:pointer;">Reject Order</button>
+        </form>
+      </div>
+    </article>
+  {% empty %}
+    <p class="driver-empty">No unassigned deliveries available right now. Stay online for new requests.</p>
+  {% endfor %}
+</section>
+</div>
+</section>
+{% endblock %}

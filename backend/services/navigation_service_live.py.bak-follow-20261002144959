@@ -1,0 +1,22 @@
+from sqlalchemy import select
+from backend.models import Order, DriverLocation
+from backend.services.tracking_service import states
+
+MOVING = {'ON_THE_WAY_TO_RESTAURANT', 'PICKED_UP', 'ON_THE_WAY_TO_CUSTOMER', 'ARRIVED_AT_CUSTOMER'}
+FINAL = {'DELIVERED', 'CANCELLED', 'CANCELED', 'REJECTED'}
+
+def snapshot(db, user=None):
+    query = select(Order).where(Order.status.notin_(FINAL), Order.driver_id.is_not(None))
+    if user:
+        field = {'driver': Order.driver_id, 'restaurant': Order.restaurant_id, 'customer': Order.customer_id}[user.role]
+        query = query.where(field == user.id)
+    orders = []
+    for order in db.scalars(query):
+        _, driver_status, _ = states(db, order)
+        if driver_status not in MOVING:
+            continue
+        location = db.get(DriverLocation, order.driver_id)
+        orders.append({'id': order.id, 'driver_id': order.driver_id, 'driver_status': driver_status,
+            'location': {'latitude': location.latitude, 'longitude': location.longitude, 'heading': location.heading,
+                'updated_at': location.updated_at} if location else None})
+    return {'navigation_active': bool(orders), 'orders': orders}

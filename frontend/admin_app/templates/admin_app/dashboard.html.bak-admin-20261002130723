@@ -1,0 +1,28 @@
+{% extends 'admin_app/admin_base.html' %}
+{% block admin_content %}
+<div class="admin-title"><div><h1>System Overview</h1><span class="admin-live"><i></i> Live Data</span></div><p>Platform activity and operations</p></div>
+<section class="admin-kpis">
+  <a id="finances" href="/admin/orders"><span>Today's Revenue</span><strong>${{ stats.revenue|floatformat:2 }}</strong><small>{{ stats.orders }} total orders</small></a>
+  <a href="/admin/orders"><span>Active Orders</span><strong>{{ stats.active_orders }}</strong><small>In progress</small></a>
+  <a href="/admin/drivers"><span>Online Drivers</span><strong>{{ stats.online_drivers }} <em>/ {{ stats.drivers }}</em></strong><small>Available fleet</small></a>
+  <a href="/admin/users?role=all"><span>Registered Accounts</span><strong>{{ stats.registrations }}</strong><small>Customers, restaurants and drivers</small></a>
+</section>
+<section class="admin-overview-grid">
+  <article class="admin-panel admin-live-map">
+    <div class="admin-panel-head"><div><h2>Live Tracking Map</h2><small>Restaurants and delivery partners</small></div><a href="/admin/drivers">View fleet</a></div>
+    {{ map_markers|json_script:"admin-map-markers" }}
+    <div id="admin-live-map" class="dashvanti-google-map" data-google-map data-map-markers-id="admin-map-markers" aria-label="Live platform tracking map"></div>
+    <p class="map-load-status" data-map-status>Loading Google Maps…</p>
+  </article>
+  <article class="admin-panel admin-recent">
+    <div class="admin-panel-head"><div><h2>Recent Orders</h2><small>Database activity</small></div><a href="/admin/orders">View all</a></div>
+    <div class="admin-table-scroll"><table><thead><tr><th>Order ID</th><th>Restaurant</th><th>Driver</th><th>Total</th><th>Status</th></tr></thead><tbody>
+    {% for row in recent_orders %}<tr><td>#{{ row.id }}</td><td>{{ row.restaurant }}</td><td>{{ row.driver }}</td><td>${{ row.total }}</td><td><span class="admin-status status-{{ row.status|lower }}">{{ row.status|title }}</span></td></tr>{% empty %}<tr><td colspan="5">No orders yet.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </article>
+</section>
+<section class="admin-bottom-grid" id="analytics">
+  <article class="admin-panel"><div class="admin-panel-head"><div><h2>Hourly Order Volume</h2><small>Today's database orders</small></div></div><div class="admin-volume-chart">{% for point in hourly_volume %}<div title="{{ point.hour }}:00 · {{ point.count }} orders"><span style="height:{{ point.height }}%"></span><small>{% if point.hour|divisibleby:3 %}{{ point.hour }}{% endif %}</small></div>{% endfor %}</div></article>
+  <article class="admin-panel"><div class="admin-panel-head"><div><h2>Top Restaurants</h2><small>By total orders</small></div></div><div class="admin-rank-list">{% for row in top_restaurants %}<a href="/admin/restaurants?q={{ row.name|urlencode }}"><span>{{ forloop.counter }}</span><strong>{{ row.name }}</strong><em>{{ row.orders }} orders</em></a>{% empty %}<p>No order data yet.</p>{% endfor %}</div></article>
+</section>
+{% endblock %}

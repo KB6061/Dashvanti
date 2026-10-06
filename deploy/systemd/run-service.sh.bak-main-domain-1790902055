@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd /home/krishna/food
+export PATH="$PWD/.venv/bin:$PATH"
+set -a
+source .env
+set +a
+PYTHON_BIN="${PYTHON_BIN:-$PWD/.venv/bin/python}"
+case "$1" in
+  api) exec "$PYTHON_BIN" -m uvicorn backend.main:app --host "${API_HOST:-127.0.0.1}" --port "${API_PORT:-8001}" ;;
+  docs) exec "$PYTHON_BIN" -m uvicorn backend.docs:app --host "${WEB_HOST:-0.0.0.0}" --port "${DOCS_PORT:-8004}" ;;
+  driver-secure)
+    export PORTAL_ROLE=driver DJANGO_ACTIVITY_LOG="$PWD/logs/driver-secure-activity.log" DJANGO_TRACKING_LOG="$PWD/logs/driver-live-tracking.log"
+    exec "$PYTHON_BIN" -m uvicorn driver_https:application --app-dir frontend --host "${WEB_HOST:-0.0.0.0}" --port "${DRIVER_HTTPS_PORT:-8443}" --ssl-keyfile "${DRIVER_TLS_KEY:-$PWD/run/tls/driver.key}" --ssl-certfile "${DRIVER_TLS_CERT:-$PWD/run/tls/driver.crt}" ;;
+  customer) port="${CUSTOMER_PORT:-8080}"; export WEB_HOST=127.0.0.1 ;;
+  restaurant) port="${RESTAURANT_PORT:-8081}" ;;
+  driver) port="${DRIVER_PORT:-8082}" ;;
+  admin) port="${ADMIN_PORT:-8083}" ;;
+  *) exit 2 ;;
+esac
+export PORTAL_ROLE="$1" DJANGO_ACTIVITY_LOG="$PWD/logs/$1-ui-activity.log" DJANGO_TRACKING_LOG="$PWD/logs/$1-live-tracking.log"
+exec "$PYTHON_BIN" frontend/manage.py runserver "${WEB_HOST:-0.0.0.0}:$port" --insecure --noreload --verbosity 0

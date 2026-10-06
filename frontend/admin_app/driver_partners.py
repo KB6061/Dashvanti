@@ -1,0 +1,108 @@
+import json
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.conf import settings
+from common_app.api import api_client
+from .views import admin_required, admin_api
+from functools import wraps
+from django.views.decorators.http import require_http_methods
+
+
+def manager_required(view):
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        if not request.session.get('admin_authenticated') and not request.session.get('driver_manager_token'):
+            return redirect('/admin/driver-partners/manager-login')
+        try: return view(request, *args, **kwargs)
+        except RuntimeError as exc: return render(request, 'error.html', {'error': str(exc)}, status=503)
+    return wrapped
+
+
+def manager_api(request, method, path, data=None):
+    if request.session.get('admin_authenticated'): return admin_api(method, path, data)
+    import jwt, time
+    token = request.session.get('driver_manager_token', '')
+    try: expiry = jwt.decode(token, options={'verify_signature': False}).get('exp', 0)
+    except jwt.PyJWTError: expiry = 0
+    if expiry < time.time()+120:
+        result = api_client().post(settings.API_URL+'/auth/refresh', json={'refresh_token': request.session.get('driver_manager_refresh', '')})
+        if not result.is_success: raise RuntimeError('Manager session expired. Please sign in again.')
+        value = result.json(); request.session['driver_manager_token'] = value['access_token']; request.session['driver_manager_refresh'] = value['refresh_token']
+    response = api_client().request(method, settings.API_URL+path, headers={'Authorization': 'Bearer '+request.session.get('driver_manager_token','')}, json=data)
+    if response.is_error: raise RuntimeError(str(response.json().get('detail', 'Request failed')))
+    return response.json()
+
+
+def manager_login(request):
+    error = ''
+    if request.method == 'POST':
+        response = api_client().post(settings.API_URL+'/driver-partner/manager/login', json={'email': request.POST.get('email',''), 'password': request.POST.get('password','')})
+        if response.is_success:
+            request.session.cycle_key(); request.session['driver_manager_token'] = response.json()['access_token']
+            request.session['driver_manager_refresh'] = response.json().get('refresh_token', '')
+            return redirect('/admin/driver-partners')
+        error = 'Invalid manager credentials'
+    return render(request, 'admin_app/driver_manager_login.html', {'error': error})
+
+
+@manager_required
+@require_http_methods(['POST'])
+def manager_logout(request):
+    try: api_client().post(settings.API_URL+'/auth/logout', headers={'Authorization':'Bearer '+request.session.get('driver_manager_token','')})
+    finally:
+        request.session.pop('driver_manager_token', None); request.session.pop('driver_manager_refresh', None)
+    return redirect('/admin/driver-partners/manager-login')
+
+
+@manager_required
+def listing(request):
+    status = request.GET.get('status', '')
+    data = manager_api(request, 'GET', '/admin/driver-partners'+('?status='+status if status else ''))
+    return render(request, 'admin_app/driver_partners.html', {'items': data['items'], 'active_nav': 'driver-partners', 'title': 'Driver Partners'})
+
+
+@manager_required
+def detail(request, driver_id):
+    if request.method == 'POST':
+        try:
+            action = request.POST.get('action')
+            if action == 'document':
+                manager_api(request, 'POST', f"/admin/driver-partners/documents/{int(request.POST['document_id'])}/review", {'status': request.POST['status'], 'notes': request.POST.get('notes', '')})
+            elif action in {'refund', 'status'}:
+                manager_api(request, 'POST', f"/admin/driver-partners/{driver_id}/deposits/{int(request.POST['deposit_id'])}/{action}")
+            elif action == 'insurance':
+                manager_api(request, 'PUT', f'/admin/driver-partners/{driver_id}/insurance', {'insurer': request.POST['insurer'], 'policy_number': request.POST['policy_number'], 'expires_on': request.POST['expires_on'], 'active': bool(request.POST.get('active'))})
+            else:
+                manager_api(request, 'POST', f'/admin/driver-partners/{driver_id}/action', {'action': action, 'notes': request.POST.get('notes', '')})
+            messages.success(request, 'Driver record updated.'); return redirect(request.path)
+        except (RuntimeError, ValueError, KeyError) as exc: messages.error(request, str(exc))
+    return render(request, 'admin_app/driver_partner_detail.html', {'partner': manager_api(request, 'GET', f'/admin/driver-partners/{driver_id}'), 'active_nav': 'driver-partners', 'title': 'Driver Application'})
+
+
+@manager_required
+def document(request, document_id):
+    if not request.session.get('admin_authenticated'): manager_api(request, 'GET', '/admin/driver-partners')
+    headers = {'X-Dashvanti-Admin-Secret': settings.ADMIN_PASSWORD} if request.session.get('admin_authenticated') else {'Authorization': 'Bearer '+request.session.get('driver_manager_token','')}
+    result = api_client().get(settings.API_URL+f'/admin/driver-partners/documents/{document_id}/file', headers=headers)
+    return HttpResponse(result.content if result.is_success else b'', status=result.status_code, content_type='image/jpeg', headers={'Cache-Control': 'no-store'})
+
+
+@admin_required
+def bank(request, driver_id):
+    return JsonResponse(admin_api('GET', f'/admin/driver-partners/{driver_id}/bank'), headers={'Cache-Control': 'no-store'})
+
+
+@manager_required
+def reports(request, kind):
+    if request.method == 'POST':
+        try:
+            if kind == 'withdrawals': manager_api(request, 'POST', '/admin/driver-partners/withdrawals/'+str(int(request.POST['id'])), {'status': request.POST['status'], 'reference': request.POST['reference']})
+            elif kind == 'incidents': manager_api(request, 'POST', '/admin/driver-partners/incidents/'+str(int(request.POST['id'])), {'status': request.POST['status'], 'resolution': request.POST['resolution']})
+            elif kind == 'insurance-claims': manager_api(request, 'POST', f"/admin/driver-partners/{int(request.POST['driver_id'])}/insurance-claims", {'incident_id': int(request.POST['incident_id']), 'reference': request.POST['reference'], 'amount': request.POST['amount'], 'status': request.POST['status']})
+            messages.success(request, 'Record updated.'); return redirect(request.path)
+        except (RuntimeError, ValueError, KeyError) as exc: messages.error(request, str(exc))
+    data = manager_api(request, 'GET', '/admin/driver-partners/reports/'+kind)
+    if request.GET.get('download'):
+        return HttpResponse(json.dumps(data, indent=2), content_type='application/json', headers={'Content-Disposition': f'attachment; filename="driver-{kind}.json"'})
+    return render(request, 'admin_app/driver_partner_reports.html', {'items': data['items'], 'kind': kind, 'active_nav': 'driver-partners', 'title': 'Driver Reports'})

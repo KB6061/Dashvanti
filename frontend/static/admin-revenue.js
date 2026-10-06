@@ -8,6 +8,16 @@
       node.classList.toggle('is-hidden', !views.includes(active));
     });
   }
+  document.querySelectorAll('.revenue-pie').forEach(pie => {
+    const colors=['#1f5f43','#3182ce','#e09f3e','#c44536'];
+    let offset=0;
+    const segments=[...pie.querySelectorAll('button')].map((button,index)=>{
+      const value=Math.max(0,Number(button.style.getPropertyValue('--value'))||0);
+      const start=offset;offset=Math.min(100,offset+value);
+      return `${colors[index%colors.length]} ${start}% ${offset}%`;
+    });
+    pie.style.setProperty('--pie-gradient',offset ? `conic-gradient(${segments.join(',')},#eef3eb ${offset}% 100%)` : '#eef3eb');
+  });
   document.querySelectorAll('[data-sort-table]').forEach((table) => {
     table.querySelectorAll('th').forEach((th, index) => {
       th.tabIndex = 0;
@@ -26,9 +36,5 @@
         }).forEach((row) => tbody.append(row));
       }
     });
-  });
-  document.addEventListener('dblclick', (event) => {
-    const row = event.target.closest('tr[data-order-url]');
-    if (row) location.href = row.dataset.orderUrl;
   });
 })();

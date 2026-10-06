@@ -2,7 +2,7 @@
  const host = document.querySelector('[data-order-alerts]');
  if (!host) return;
  const role = host.dataset.orderAlerts, seen = new Set();
- let audio, timer, busy=false, enabled=false, ringing, saving=false, storageKey, pending=false, activeTone;
+ let audio, timer, busy=false, acting=false, enabled=false, ringing, saving=false, storageKey, pending=false, activeTone;
  const noticeIds=new Set();
  let activeDriverOrders=new Set();
  let assignmentAlertUntil=0;
@@ -77,7 +77,7 @@
  toggle.onclick=()=>{panel.hidden=!panel.hidden;};
  const csrf=()=>document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
  async function poll(){
-  if(busy)return;busy=true;
+  if(busy||acting)return;busy=true;
   try{
    const statusResponse=await fetch('/'+role+'/live-alerts?statuses=1',{credentials:'same-origin',headers:{Accept:'application/json'}});
    if(statusResponse.ok && !statusResponse.redirected){
@@ -145,31 +145,66 @@
    const response=await fetch('/'+role+'/live-alerts',{credentials:'same-origin',headers:{Accept:'application/json'}});
    if(!response.ok || response.redirected)return;
    const rows=await response.json();const fresh=rows.some(r=>!seen.has(r.id));
+   if(role==='driver')window.dispatchEvent(new CustomEvent('dashvanti:delivery-offers',{detail:rows.filter(row=>!seen.has(row.id))}));
    rows.forEach(r=>seen.add(r.id));panel.replaceChildren();toggle.hidden=!rows.length;
    if(!rows.length){if(!activeTone&&(role!=='driver'||Date.now()>assignmentAlertUntil))stopAlert();panel.hidden=true;return;}
    persistState();
    const title=document.createElement('h2');title.textContent=role==='restaurant'?'New customer orders':'Delivery offers';panel.append(title);
+   const closeOffers=document.createElement('button');closeOffers.type='button';closeOffers.textContent='×';closeOffers.setAttribute('aria-label','Dismiss order offers');
+   closeOffers.style.cssText='width:40px;min-height:40px;margin-left:12px;padding:4px;float:right;background:#163e35;color:white;font-size:22px';
+   closeOffers.onclick=()=>{panel.hidden=true;stopAlert();};title.append(closeOffers);
    rows.forEach(row=>{
-    const article=document.createElement('article'),text=document.createElement('p');
-    text.textContent='#'+row.id+' · '+(row.restaurant_name||row.customer_name||'Order')+' · '+(row.address||'');
+    const article=document.createElement('article'),text=document.createElement('p');article.dataset.offerOrder=row.id;
+    text.textContent='#'+row.id+' · '+(row.restaurant_name||row.customer_name||'Order');
+    const details=document.createElement('p');details.style.whiteSpace='pre-line';
+    details.textContent=[row.customer_name?'Customer: '+row.customer_name:'',row.restaurant_address?'Pickup: '+row.restaurant_address:'','Delivery: '+(row.address||'Pickup at restaurant'),
+      ...(row.items||[]).map(item=>item.quantity+' × '+item.name),
+      row.pickup_eta_minutes!=null?'Estimated pickup: '+row.pickup_eta_minutes+' min · Delivery: '+row.delivery_eta_minutes+' min':'',
+      row.estimated_earning!=null?'Estimated earning: '+row.currency+' '+row.estimated_earning:'',
+      row.distance_miles!=null?'Pickup distance: '+row.distance_miles+' miles':'',
+      row.upcoming?'Upcoming request — after current order #'+row.current_order_id:''].filter(Boolean).join('\n');
     const button=document.createElement('button');button.textContent='Accept';button.type='button';
     button.onclick=async()=>{
-      button.disabled=true;
+      if(acting)return;acting=true;button.disabled=true;rejectBtn.disabled=true;
       const body=new FormData();body.set('csrfmiddlewaretoken',csrf());body.set('status','ACCEPTED');
       try{
        const url=role==='driver'?'/driver/order/'+row.id+'/accept':'/restaurant/order/'+row.id;
-       const res=await fetch(url,{method:'POST',body,credentials:'same-origin'});
+       const res=await fetch(url,{method:'POST',body,credentials:'same-origin',headers:{'X-Requested-With':'fetch'}});
        if(!res.ok)throw new Error('Order is no longer available');
-       stopAlert();article.remove();if(role==='driver') location.assign('/driver/order/'+row.id);
-      }catch(e){text.textContent=e.message;button.disabled=false;}
+       const result=res.headers.get('content-type')?.includes('application/json')?await res.json():null;
+       stopAlert();
+       if(role==='driver'&&result?.queued){article.replaceChildren(text,details);text.textContent='Accepted as upcoming: order #'+row.id+'. Your current delivery continues.';window.dispatchEvent(new Event('dashvanti:queue-changed'));}
+       else{article.remove();if(role==='driver')location.assign(result?.redirect_url||'/driver/order/'+row.id);}
+      }catch(e){text.textContent=e.message;button.disabled=false;rejectBtn.disabled=false;}
+      finally{acting=false;}
     };
-    article.append(text,button);panel.append(article);
+    const rejectBtn = document.createElement('button');
+    rejectBtn.textContent = 'Reject'; rejectBtn.type = 'button'; rejectBtn.style.background = '#c53424'; rejectBtn.style.marginLeft = '6px';
+    rejectBtn.onclick = async() => {
+      if(acting)return;acting=true;rejectBtn.disabled = true;button.disabled=true;
+      const body = new FormData(); body.set('csrfmiddlewaretoken', csrf());
+      try {
+        if(role==='restaurant')body.set('status','REJECTED');
+        const url=role==='driver'?'/driver/order/'+row.id+'/reject':'/restaurant/order/'+row.id;
+        const response=await fetch(url, {method: 'POST', body, credentials: 'same-origin',headers:{'X-Requested-With':'fetch'}});
+        if(!response.ok)throw Error('Could not reject this request. Please try again.');
+        stopAlert(); article.remove();
+      } catch(e) { text.textContent = e.message; rejectBtn.disabled = false;button.disabled=false; }
+      finally{acting=false;}
+    };
+    article.append(text,details, button, rejectBtn);
+    if(role==='driver'&&row.offer_expires_at){const deadline=document.createElement('small');deadline.dataset.offerDeadline=row.offer_expires_at;article.append(deadline);}
+    panel.append(article);
    });
    if(fresh){panel.hidden=false;ring();clearTimeout(timer);if(role==='restaurant')timer=setTimeout(()=>{panel.hidden=true;},10000);}
   }finally{busy=false;}
  }
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)void poll();});
+ window.addEventListener('dashvanti:order-update',()=>{if(role==='driver')void poll();});
+ window.addEventListener('dashvanti:offers-refresh',()=>{void poll();});
  loadPreference().then(()=>poll()).catch(()=>{soundStatus.textContent='Reconnecting notification settings…';});
- setInterval(()=>{if(storageKey&&!document.hidden)poll().catch(()=>{soundStatus.textContent='Reconnecting order notifications…';});},7000);
+ setInterval(()=>{panel.querySelectorAll('[data-offer-deadline]').forEach(el=>{const seconds=Math.max(0,Math.ceil((Date.parse(el.dataset.offerDeadline)-Date.now())/1000));el.textContent=seconds+' seconds to accept';if(!seconds){el.closest('article').querySelectorAll('button').forEach(b=>b.disabled=true);el.textContent='Offer expired';}});},1000);
+ setInterval(()=>{if(storageKey&&(role==='driver'||!document.hidden))poll().catch(()=>{soundStatus.textContent='Reconnecting order notifications…';});},5000);
  setInterval(()=>{if(!document.hidden)loadPreference().catch(()=>{soundStatus.textContent='Reconnecting notification settings…';});},60000);
 
 })();
@@ -177,13 +212,13 @@
  if(!document.querySelector('[data-order-alerts]') || document.querySelector('[data-order-alerts]').dataset.orderAlerts==='customer')return;
  let busy=false;
  setInterval(async()=>{
-  if(busy || document.hidden || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName))return;
+  if(window.dashvantiNavigationActive || busy || document.hidden || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName))return;
   busy=true;
   try{
    const res=await fetch(location.pathname,{credentials:'same-origin'});
    if(!res.ok || res.redirected)return;
    const page=new DOMParser().parseFromString(await res.text(),'text/html');
-   for(const selector of ['.order-board','.driver-jobs-panel']){
+   for(const selector of ['.order-board','.driver-live-status','.driver-requests-panel']){
     const old=document.querySelector(selector),fresh=page.querySelector(selector);
     if(old && fresh)old.replaceWith(fresh);
    }
@@ -194,5 +229,5 @@
     if(history&&updated)history.replaceWith(updated);
    }
   }catch(_){}finally{busy=false;}
- },12000);
+ },5000);
 })();

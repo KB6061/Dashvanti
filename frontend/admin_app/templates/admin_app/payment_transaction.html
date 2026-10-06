@@ -1,0 +1,15 @@
+{% extends 'admin_app/admin_base.html' %}
+{% block admin_content %}
+<a href="/admin/payments">← Payments</a><h1>Transaction {{ transaction.id }}</h1>
+<section class="admin-panel"><p><strong>{{ transaction.merchant_order_id }}</strong> · {{ transaction.environment }}</p><p>{{ transaction.currency }} {{ transaction.amount }} minor units · {{ transaction.status }}</p><p>Orders: {{ transaction.order_ids|join:', ' }} · Last verified: {{ transaction.checked_at|default:'Not checked' }}</p>
+  <form method="post" data-no-ajax="true">{% csrf_token %}<button name="action" value="recheck">Re-check PhonePe status</button></form>
+</section>
+{% if transaction.status == 'COMPLETED' and transaction.refundable_amount >= 100 %}
+<section class="admin-panel"><h2>Refund</h2><p>Available: {{ transaction.refundable_amount }} paisa. INR 1 = 100 paisa.</p>
+  <form method="post" data-no-ajax="true" class="admin-form-grid">{% csrf_token %}<input name="action" type="hidden" value="refund"><input name="request_key" type="hidden" value="{{ refund_request_key }}">
+    <label>Amount in paisa<input type="number" min="100" max="{{ transaction.refundable_amount }}" name="amount" required></label><label>Reason<input name="reason" minlength="3" maxlength="250" required></label><button>Submit refund</button>
+  </form>
+</section>{% endif %}
+<section class="admin-panel"><h2>Refund history</h2><div class="admin-table-scroll"><table><thead><tr><th>Reference</th><th>Paisa</th><th>Status</th><th>Reason</th><th>Action</th></tr></thead><tbody>{% for row in transaction.refunds %}<tr><td>{{ row.merchant_refund_id }}</td><td>{{ row.amount }}</td><td>{{ row.status }}</td><td>{{ row.reason }}</td><td><form method="post" data-no-ajax="true">{% csrf_token %}<input type="hidden" name="refund_id" value="{{ row.id }}"><button name="action" value="refund_status">Re-check</button></form></td></tr>{% empty %}<tr><td colspan="5">No refunds.</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="admin-panel"><h2>Payment events</h2>{% for event in transaction.events %}<p>{{ event.created_at }} · {{ event.event }} · {{ event.details }}</p>{% empty %}<p>No events.</p>{% endfor %}</section>
+{% endblock %}

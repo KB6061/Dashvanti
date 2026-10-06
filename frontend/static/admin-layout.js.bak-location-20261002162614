@@ -1,0 +1,80 @@
+(() => {
+ const workspace=document.querySelector('.admin-workspace');
+ if(!workspace)return;
+ const format=new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'medium'});
+ const clock=workspace.querySelector('[data-admin-clock]');
+ const tick=()=>{const date=new Date();clock.dateTime=date.toISOString();clock.textContent=format.format(date)};
+ tick();setInterval(tick,1000);
+ const last=workspace.querySelector('[data-admin-login]');
+ if(last.dataset.adminLogin){const date=new Date(last.dataset.adminLogin);if(!Number.isNaN(date.valueOf()))last.textContent=format.format(date)}
+ const isDetailLink=node=>node.matches('.admin-kpis a,.admin-rank-list a,a[href^="/admin/order/"],a[href^="/admin/payments/"]')&&!node.href.endsWith('/logs');
+ workspace.querySelectorAll('a').forEach(link=>{
+  if(!isDetailLink(link))return;
+  link.dataset.adminDetail='true';link.title='Double-click to open; Enter also opens';
+ });
+ workspace.querySelectorAll('.admin-page summary').forEach(node=>{node.dataset.adminDisclosure='true';node.title='Double-click to open; Enter also opens'});
+ document.addEventListener('click',event=>{
+  const node=event.target.closest('[data-admin-detail],[data-admin-disclosure],a[href^="/admin/order/"],a[href^="/admin/payments/"]');
+  if(node?.tagName==='A'&&!isDetailLink(node))return;
+  if(node&&event.detail>0){event.preventDefault();event.stopImmediatePropagation()}
+ },true);
+ document.addEventListener('dblclick',event=>{
+  const disclosure=event.target.closest('[data-admin-disclosure]');
+  if(disclosure){event.preventDefault();disclosure.parentElement.open=!disclosure.parentElement.open;return}
+  if(event.target.closest('button,input,select,textarea,form'))return;
+  const candidate=event.target.closest('a');
+  const link=candidate&&isDetailLink(candidate)?candidate:null;
+  const row=event.target.closest('tr[data-order-url]');
+  if(link||row){event.preventDefault();event.stopImmediatePropagation();location.assign(link?link.href:row.dataset.orderUrl)}
+ },true);
+ workspace.querySelectorAll('[data-payout-form]').forEach(form=>{
+  const select=form.querySelector('[name=payout_mode]');const label=form.querySelector('[data-manual-confirmation]');
+  const update=()=>{label.hidden=select.value!=='manual';label.querySelector('input').required=select.value==='manual'};
+  select.addEventListener('change',update);update();
+  form.addEventListener('submit',event=>{if(!confirm('Confirm '+select.value+' payout of USD '+form.querySelector('[name=expected_amount]').value+'?'))event.preventDefault()});
+ });
+ const sidebar=workspace.querySelector('.admin-sidebar');
+ const toggle=workspace.querySelector('[data-admin-nav-toggle]');
+ const backdrop=workspace.querySelector('[data-admin-nav-close]');
+ const mobile=matchMedia('(max-width:720px)');
+ const setOpen=(open)=>{
+  workspace.classList.toggle('nav-open',open);
+  document.body.classList.toggle('admin-nav-open',open);
+  toggle.setAttribute('aria-expanded',String(open));
+  toggle.setAttribute('aria-label',open?'Close navigation':'Open navigation');
+  backdrop.hidden=!open;
+  sidebar.inert=mobile.matches&&!open;
+  if(open)sidebar.querySelector('a').focus();
+ };
+ toggle.addEventListener('click',()=>setOpen(!workspace.classList.contains('nav-open')));
+ backdrop.addEventListener('click',()=>{setOpen(false);toggle.focus()});
+ mobile.addEventListener('change',()=>setOpen(false));
+ setOpen(false);
+ const fundToggle=workspace.querySelector('[data-fund-toggle]');
+ const subnav=workspace.querySelector('#admin-fund-subnav');
+ fundToggle.addEventListener('click',()=>{
+  subnav.hidden=!subnav.hidden;
+  fundToggle.setAttribute('aria-expanded',String(!subnav.hidden));
+ });
+ sidebar.querySelectorAll('a').forEach(link=>link.addEventListener('click',()=>{if(mobile.matches)setOpen(false)}));
+ document.querySelectorAll('.admin-actions details').forEach(details=>{
+  const form=details.querySelector('form');
+  if(!form)return;
+  const close=document.createElement('button');
+  close.type='button';close.className='admin-edit-close';close.textContent='Close';
+  close.addEventListener('click',()=>{details.open=false;details.querySelector('summary').focus()});
+  form.append(close);
+ });
+ document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'){
+   document.querySelectorAll('.admin-actions details[open]').forEach(details=>details.open=false);
+   if(workspace.classList.contains('nav-open')){setOpen(false);toggle.focus()}
+  }
+  if(event.key==='Tab'&&workspace.classList.contains('nav-open')){
+   const nodes=[...sidebar.querySelectorAll('a,button')].filter(node=>node.getClientRects().length);
+   const first=nodes[0],last=nodes.at(-1);
+   if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}
+   else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
+  }
+ });
+})();

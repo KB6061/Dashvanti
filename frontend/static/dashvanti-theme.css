@@ -566,6 +566,7 @@ body.admin-portal:has(.admin-workspace) main>.alert{position:fixed;right:22px;to
 
 .restaurant-global-watch{display:none}
 [data-order-alerts]{position:fixed;right:18px;bottom:18px;z-index:100;display:grid;gap:8px;max-width:min(440px,95vw)}
+[data-order-alerts="driver"]{bottom:84px;z-index:141}
 [data-order-alerts]>button{padding:8px 12px;border:1px solid #cbd7c9;border-radius:9px;background:#20583e;color:white}
 .live-order-popup{padding:18px;border-radius:14px;background:white;border:2px solid #ef8d2f;box-shadow:0 15px 45px #0003;max-height:65vh;overflow:auto}
 .live-order-popup h2{font-size:20px}.live-order-popup article{padding:8px 0;border-bottom:1px solid #ddd}

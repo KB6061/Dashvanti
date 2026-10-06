@@ -1,8 +1,20 @@
+from . import partner_views
+from common_app.views import navigation_state
 from django.urls import path
 from common_app import views as common
-from . import views
+from . import views, map_controls
 
 urlpatterns = [
+    path('partner', partner_views.dashboard),
+    path('partner/feed', partner_views.feed),
+    path('partner/documents/<int:document_id>', partner_views.document),
+    path('partner/push-config', partner_views.push_config),
+    path('partner/devices', partner_views.register_device),
+    path('partner-push-worker.js', partner_views.push_worker),
+    path('notifications-worker.js', map_controls.notifications_worker),
+    path('road-controls', map_controls.road_controls),
+    path('navigation-state', navigation_state),
+    path('order/<int:order_id>/reject', views.reject),
     path('presence', views.presence),
     path('location/update',views.navigation_update,{'kind':'location'}),
     path('status/update',views.navigation_update,{'kind':'status'}),

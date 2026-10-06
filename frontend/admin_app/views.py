@@ -1,5 +1,6 @@
 from collections import Counter
-from datetime import date
+from datetime import date, timedelta
+from django.utils import timezone
 from urllib.parse import urlencode
 
 from django.conf import settings
@@ -16,13 +17,16 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from backend.db import Session
-from backend.models import Driver, DriverLocation, Order, OrderItem, DeliveryStatus, Restaurant, User
+from backend.models import Customer, Driver, DriverLocation, Order, OrderItem, DeliveryStatus, Restaurant, User, now
 
 
 def admin_api(method, path, data=None):
     headers = {'X-Dashvanti-Admin-Secret': settings.ADMIN_PASSWORD}
-    with httpx.Client(timeout=20) as client:
-        response = client.request(method, settings.API_URL + path, headers=headers, json=data)
+    try:
+        with httpx.Client(timeout=20) as client:
+            response = client.request(method, settings.API_URL + path, headers=headers, json=data)
+    except httpx.HTTPError as exc:
+        raise RuntimeError('Backend temporarily unavailable. Please try again.') from exc
     if response.is_error:
         try:
             detail = response.json().get('detail', 'Request failed')
@@ -49,15 +53,33 @@ def login(request):
         if request.POST.get('password') == settings.ADMIN_PASSWORD:
             request.session.cycle_key()
             request.session['admin_authenticated'] = True
+            from backend.models import SystemConfig
+            with Session() as db:
+                row=db.get(SystemConfig, 'admin:last-login')
+                request.session['admin_last_login']=row.value if row else ''
+                stamp=timezone.now().isoformat()
+                if row: row.value=stamp
+                else: db.add(SystemConfig(key='admin:last-login',value=stamp))
+                db.commit()
+            request.session['admin_login_at']=stamp
             return redirect('/admin/dashboard')
         error = 'Invalid admin password'
     return render(request, 'admin_app/login.html', {'error': error})
 
 
 @admin_required
+def chat_feed(request):
+    try:
+        return JsonResponse(admin_api('GET', '/operations/admin/notifications'), safe=False)
+    except RuntimeError as exc:
+        return JsonResponse({'detail': str(exc)}, status=503)
+
+@admin_required
 def dashboard(request):
-    final_statuses = {'DELIVERED', 'REJECTED', 'CANCELLED'}
+    final_statuses = {'DELIVERED', 'REJECTED', 'CANCELLED', 'PAYMENT_PENDING', 'PAYMENT_FAILED', 'SANDBOX_PAID', 'COMPLETED'}
     with Session() as db:
+        from backend.services.revenue_service import summary_cards
+        revenue_cards=summary_cards(db)
         all_orders = list(db.scalars(select(Order).order_by(Order.id.desc()).limit(2000)))
         restaurants = list(db.scalars(select(Restaurant).order_by(Restaurant.name).limit(500)))
         users_by_id = {row.id: row for row in db.scalars(select(User))}
@@ -71,11 +93,12 @@ def dashboard(request):
             'online_drivers': db.scalar(select(func.count(Driver.id)).where(Driver.online == True)) or 0,
             'orders': db.scalar(select(func.count(Order.id))) or 0,
             'active_orders': sum(row.status not in final_statuses for row in all_orders),
-            'revenue': sum((row.total for row in today_orders), 0),
+            'revenue': revenue_cards['today'],
+            'total_revenue': revenue_cards['lifetime'],
             'registrations': db.scalar(select(func.count(User.id))) or 0,
         }
         recent_orders = [{
-            'id': row.id, 'status': row.status, 'total': row.total,
+            'id': row.id, 'status': row.status, 'total': row.total, 'currency': row.currency,
             'restaurant': restaurant_names.get(row.restaurant_id, f'Restaurant #{row.restaurant_id}'),
             'driver': users_by_id.get(row.driver_id).name if row.driver_id and users_by_id.get(row.driver_id) else 'Unassigned',
         } for row in all_orders[:12]]
@@ -89,11 +112,10 @@ def dashboard(request):
             {'id': f'restaurant-{row.id}', 'name': row.name, 'address': row.address, 'type': 'restaurant'}
             for row in restaurants if row.address
         ]
-        for location in db.scalars(select(DriverLocation)):
-            driver = users_by_id.get(location.driver_id)
+        from backend.services.navigation_service_live import online_drivers
+        for location in online_drivers(db):
             map_markers.append({
-                'id': f'driver-{location.driver_id}', 'name': driver.name if driver else f'Driver #{location.driver_id}',
-                'latitude': location.latitude, 'longitude': location.longitude, 'type': 'driver',
+                **location, 'id': f"driver-{location['id']}", 'type': 'driver',
             })
     return render(request, 'admin_app/dashboard.html', {
         'portal_urls': settings.PORTAL_URLS, 'stats': stats, 'map_markers': map_markers,
@@ -107,6 +129,7 @@ def _payload(request, role_name, updating=False):
         'email': request.POST.get('email', '').strip(),
         'name': request.POST.get('name', '').strip(),
         'phone': request.POST.get('phone', '').strip(),
+        'country': request.POST.get('country', '').strip() or None,
     }
     password = request.POST.get('password', '')
     if password or not updating:
@@ -133,6 +156,10 @@ def _payload(request, role_name, updating=False):
             'vehicle_type': request.POST.get('vehicle_type', '').strip(),
             'vehicle_number': request.POST.get('vehicle_number', '').strip(),
         })
+    if role_name=='restaurant':
+        for field in ('latitude','longitude'):
+            value=request.POST.get(field,'').strip()
+            if value:payload[field]=value
     return payload
 
 
@@ -150,12 +177,20 @@ def _manage_users(request, role_name):
                 messages.success(request, f'{row_role.title()} updated permanently')
             elif action == 'delete':
                 user_id = request.POST.get('user_id', '')
-                admin_api('DELETE', f'/operations/admin/users/{user_id}')
-                messages.success(request, f'{row_role.title()} deleted permanently')
+                result = admin_api('DELETE', f'/operations/admin/users/{user_id}')
+                deleted_id = int(result['deleted'])
+                profile = {'customer': Customer, 'restaurant': Restaurant, 'driver': Driver}[result['role']]
+                with Session() as db:
+                    if db.get(User, deleted_id) or db.get(profile, deleted_id):
+                        raise RuntimeError('Deletion was not saved to the database. Please try again.')
+                messages.success(request, f"Verified: {result['role'].title()} #{deleted_id} permanently deleted from database.")
         except RuntimeError as error:
             messages.error(request, str(error))
         query = {'role': role_name or 'all'}
-        return redirect(request.path + '?' + urlencode(query))
+        redirect_url = request.path + '?' + urlencode(query)
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'redirect_url': redirect_url})
+        return redirect(redirect_url)
     q = request.GET.get('q', '').strip()
     status = request.GET.get('status', '').strip()
     rows = admin_api('GET', '/operations/admin/users?' + urlencode({
@@ -210,7 +245,7 @@ def orders(request):
             if q and q not in haystack:
                 continue
             rows.append({'order': order, 'restaurant': restaurant, 'customer': customer, 'driver': driver})
-    statuses = ['PLACED', 'ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'ON_THE_WAY_TO_RESTAURANT', 'PICKED_UP', 'ON_THE_WAY_TO_CUSTOMER', 'DELIVERED', 'REJECTED']
+    statuses = ['PLACED', 'ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'ON_THE_WAY_TO_RESTAURANT', 'PICKED_UP', 'ON_THE_WAY_TO_CUSTOMER', 'DELIVERED', 'REJECTED', 'CANCELLED', 'PAYMENT_PENDING', 'PAYMENT_FAILED', 'SANDBOX_PAID']
     return render(request, 'admin_app/orders.html', {'rows': rows, 'status': status, 'q': q, 'statuses': statuses, 'title': 'Orders', 'active_nav': 'orders'})
 
 
@@ -224,37 +259,45 @@ def logout(request):
 @require_http_methods(['GET', 'POST'])
 def content(request):
     if request.method == 'POST':
-        action = request.POST.get('action')
-        if action == 'banner':
-            admin_api('PUT', '/content/banner', {
-                'title': request.POST.get('title', ''), 'description': request.POST.get('description', ''),
-                'enabled': request.POST.get('enabled') == 'on', 'media_file_id': None,
-            })
-            messages.success(request, 'Home banner saved')
-        elif action == 'promotion':
-            admin_api('POST', '/content/promotions', {
-                'title': request.POST.get('title', ''), 'description': request.POST.get('description', ''),
-                'code': request.POST.get('code', ''), 'percent': request.POST.get('percent', 0),
-                'minimum': request.POST.get('minimum', 0), 'cap': request.POST.get('cap', 0),
-                'first_order_only': request.POST.get('first_order_only') == 'on',
-                'enabled': request.POST.get('enabled') == 'on', 'starts_at': None, 'ends_at': None,
-            })
-            messages.success(request, 'Promotion saved')
-        elif action == 'delete-promotion':
-            admin_api('DELETE', '/content/promotions/' + request.POST.get('promotion_id', ''))
-            messages.success(request, 'Promotion removed')
+        try:
+            action = request.POST.get('action')
+            if action == 'banner':
+                admin_api('PUT', '/content/banner', {
+                    'title': request.POST.get('title', ''), 'description': request.POST.get('description', ''),
+                    'enabled': request.POST.get('enabled') == 'on', 'media_file_id': None,
+                })
+                messages.success(request, 'Home banner saved')
+            elif action == 'promotion':
+                admin_api('POST', '/content/promotions', {
+                    'title': request.POST.get('title', ''), 'description': request.POST.get('description', ''),
+                    'code': request.POST.get('code', ''), 'percent': request.POST.get('percent', 0),
+                    'minimum': request.POST.get('minimum', 0), 'cap': request.POST.get('cap', 0),
+                    'first_order_only': request.POST.get('first_order_only') == 'on',
+                    'enabled': request.POST.get('enabled') == 'on', 'starts_at': None, 'ends_at': None,
+                })
+                messages.success(request, 'Promotion saved')
+            elif action == 'delete-promotion':
+                admin_api('DELETE', '/content/promotions/' + request.POST.get('promotion_id', ''))
+                messages.success(request, 'Promotion removed')
+        except RuntimeError as exc:
+            messages.error(request, str(exc))
         return redirect(request.path)
-    return render(request, 'admin_app/content.html', {'home': admin_api('GET', '/content/home'), 'title': 'Promotions', 'active_nav': 'promotions'})
+    home = admin_api('GET', '/content/home')
+    home['promotions'] = admin_api('GET', '/operations/admin/promotions')
+    return render(request, 'admin_app/content.html', {'home': home, 'title': 'Promotions', 'active_nav': 'promotions'})
 
 
 @admin_required
 @require_http_methods(['GET', 'POST'])
 def operations(request):
     if request.method == 'POST':
-        admin_api('PUT', '/operations/tickets/' + request.POST.get('ticket_id', ''), {
-            'status': request.POST.get('status', 'open'), 'resolution': request.POST.get('resolution', ''),
-        })
-        messages.success(request, 'Support ticket updated')
+        try:
+            admin_api('PUT', '/operations/tickets/' + request.POST.get('ticket_id', ''), {
+                'status': request.POST.get('status', 'open'), 'resolution': request.POST.get('resolution', ''),
+            })
+            messages.success(request, 'Support ticket updated')
+        except RuntimeError as exc:
+            messages.error(request, str(exc))
         return redirect(request.path)
     return render(request, 'admin_app/operations.html', {
         'tickets': admin_api('GET', '/operations/tickets/all'),
@@ -271,7 +314,17 @@ def funds(request, section='revenue'):
     if request.method == 'POST':
         try:
             action = request.POST.get('action')
-            if action == 'cancellation_policy':
+            if action == 'payout_settings':
+                admin_api('PUT','/operations/funds/payout-settings',{'manual_enabled':request.POST.get('manual_enabled')=='on','automated_enabled':request.POST.get('automated_enabled')=='on','environment':request.POST.get('environment','test'),'secret_key':request.POST.get('secret_key',''),'confirm_live':request.POST.get('confirm_live')=='on'})
+                messages.success(request,'Payout controls saved')
+            elif action == 'payout_recipient':
+                admin_api('PUT','/operations/funds/payout-recipient',{'user_id':request.POST.get('user_id'),'account_id':request.POST.get('account_id')})
+                messages.success(request,'Recipient account verified and saved')
+            elif action == 'payout_status':
+                result=admin_api('POST','/operations/funds/payouts/'+request.POST.get('payout_id','')+'/status')
+                notify=messages.success if result['status'] in {'PAID','TRANSFERRED','TEST_TRANSFERRED'} else messages.error
+                notify(request,f"Receipt {result['reference']}: {result['status']} · {result.get('error','')}")
+            elif action == 'cancellation_policy':
                 admin_api('PUT','/operations/cancellation-policy',{'preparation_percent':request.POST.get('preparation_percent'),'review_threshold':request.POST.get('review_threshold')})
                 messages.success(request,'Cancellation rules saved for new orders')
             elif action == 'delete_refund':
@@ -293,17 +346,23 @@ def funds(request, section='revenue'):
                 result = admin_api('POST', '/operations/funds/quick-pay', {
                     'order_id': request.POST.get('order_id'),
                     'payee_role': request.POST.get('payee_role'),
+                    'mode': request.POST.get('payout_mode','manual'),
+                    'confirmation': request.POST.get('confirmation',''),
+                    'expected_amount': request.POST.get('expected_amount'),
                 })
-                messages.success(request, f"Quick-pay completed: {result['reference']}")
+                notify=messages.success if result['status'] in {'PAID','TRANSFERRED','TEST_TRANSFERRED'} else messages.error
+                notify(request, f"Payout receipt {result['reference']} · USD {result['amount']} · {result['status']} · Confirmation: {result.get('confirmation') or result.get('provider_reference') or 'Processing'} · {result.get('error','')}")
             elif action == 'delete':
                 admin_api('DELETE', '/operations/funds/rules/' + request.POST.get('kind', ''))
                 messages.success(request, 'Rule deleted')
-            else:
+            elif action == 'save':
                 admin_api('PUT', '/operations/funds/rules/' + request.POST.get('kind', ''), {
                     'method': request.POST.get('method'), 'value': request.POST.get('value'),
                     'minimum': request.POST.get('minimum') or '0', 'enabled': request.POST.get('enabled') == 'on',
                 })
                 messages.success(request, 'Pricing saved')
+            else:
+                raise RuntimeError('Unknown fund management action')
         except (RuntimeError, httpx.HTTPError) as exc:
             messages.error(request, str(exc))
         return redirect('/admin/funds/' + section)
@@ -311,6 +370,7 @@ def funds(request, section='revenue'):
     from backend.services import revenue_service
     data = admin_api('GET', '/operations/funds')
     data['cancellation_policy'] = admin_api('GET','/operations/cancellation-policy')
+    data['payout_settings']=admin_api('GET','/operations/funds/payout-settings')
     revenue_params = {key: request.GET.get(key, '').strip() for key in ('date_range','start_date','end_date','restaurant_id','driver_id','payment_mode','status','q')}
     revenue = admin_api('GET', '/operations/funds/revenue?' + urlencode(revenue_params))
     if request.GET.get('export') == 'csv':
@@ -349,6 +409,22 @@ def funds(request, section='revenue'):
 def order_detail(request, order_id):
     if request.method == 'POST':
         try:
+            if request.POST.get('admin_action') == 'chat':
+                admin_api('POST', f'/operations/admin/orders/{order_id}/messages', {'body': request.POST.get('body', '').strip()})
+                messages.success(request, 'Message sent.')
+                return redirect(f'/admin/order/{order_id}')
+            if request.POST.get('admin_action') == 'status':
+                admin_api('POST', f'/operations/orders/{order_id}/status?status={request.POST.get("status", "") }')
+                messages.success(request, 'Order status updated.')
+                return redirect(f'/admin/order/{order_id}')
+            if request.POST.get('admin_action') == 'delete':
+                admin_api('DELETE', f'/operations/orders/{order_id}')
+                messages.success(request, 'Order cancelled and marked for refund review.')
+                return redirect(f'/admin/order/{order_id}')
+            if request.POST.get('admin_action') == 'assign-nearest':
+                result = admin_api('POST', f'/operations/orders/{order_id}/assign-nearest')
+                messages.success(request, f"Nearest driver assigned ({result['distance_miles']:.2f} miles).")
+                return redirect(f'/admin/order/{order_id}')
             admin_api('POST', f'/operations/orders/{order_id}/reassign', {
                 'driver_id': request.POST.get('driver_id'),
                 'expected_driver_id': request.POST.get('expected_driver_id') or None,
@@ -367,15 +443,32 @@ def order_detail(request, order_id):
             'customer': db.get(User, order.customer_id),
             'driver': db.get(User, order.driver_id) if order.driver_id else None,
             'items': list(db.scalars(select(OrderItem).where(OrderItem.order_id == order_id))),
+            'chat_messages': admin_api('GET', f'/operations/admin/orders/{order_id}/messages'),
             'history': list(db.scalars(select(DeliveryStatus).where(DeliveryStatus.order_id == order_id).order_by(DeliveryStatus.created_at))),
             'active_nav': 'orders',
+            'status_options': ['PLACED','ACCEPTED','CONFIRMED','PREPARING','PACKING','WRAPPING_UP','READY_FOR_PICKUP','ON_THE_WAY_TO_RESTAURANT','ARRIVED_AT_RESTAURANT','PICKED_UP','ON_THE_WAY_TO_CUSTOMER','DELIVERED','REJECTED'],
         }
-        context['can_reassign'] = order.mode == 'delivery' and order.status in {'ACCEPTED','PREPARING','PACKING','WRAPPING_UP','READY_FOR_PICKUP','ON_THE_WAY_TO_RESTAURANT'}
+        if order.status not in context['status_options']:
+            context['status_options'].insert(0, order.status)
+        context['can_reassign'] = order.mode == 'delivery' and order.status in {'PLACED','ACCEPTED','PREPARING','PACKING','WRAPPING_UP','READY_FOR_PICKUP','ON_THE_WAY_TO_RESTAURANT'}
         if context['can_reassign']:
             try:
                 context['nearby_drivers'] = admin_api('GET', f'/operations/orders/{order_id}/nearby-drivers')
             except RuntimeError:
                 context['nearby_drivers'] = []
+        candidates = {row['id']: row for row in context.get('nearby_drivers', [])}
+        busy_ids = set(db.scalars(select(Order.driver_id).where(Order.driver_id.is_not(None), Order.status.notin_(['DELIVERED','CANCELLED','CANCELED','REJECTED']))))
+        online_drivers = []
+        for profile, user in db.execute(select(Driver, User).join(User, User.id == Driver.id).where(Driver.online == True)):
+            from backend.services.redis_geo_service import location as live_location
+            location = live_location(db,profile.id)
+            recent = bool(location and location.updated_at >= now() - timedelta(minutes=2))
+            online_drivers.append({'id': profile.id, 'name': user.name, 'phone': user.phone,
+                'availability': 'Busy' if profile.id in busy_ids else 'Available',
+                'gps': 'Recent' if recent else 'Missing or stale',
+                'candidate': candidates.get(profile.id)})
+        context['assignable_drivers'] = [{'id': profile.id, 'name': user.name, 'phone': user.phone, 'online': profile.online, 'busy': profile.id in busy_ids} for profile, user in db.execute(select(Driver, User).join(User, User.id == Driver.id).order_by(User.name))]
+        context['online_drivers'] = sorted(online_drivers, key=lambda row: (row['candidate'] is None, row['candidate']['distance_miles'] if row['candidate'] else float('inf'), row['name']))
         return render(request, 'admin_app/order_detail.html', context)
 
 @admin_required

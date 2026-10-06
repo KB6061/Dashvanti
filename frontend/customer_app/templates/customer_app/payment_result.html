@@ -1,0 +1,15 @@
+{% extends 'base.html' %}{% load static %}
+{% block content %}
+<section class="checkout-card" data-payment-result="{{ payment.id }}" style="max-width:620px;margin:30px auto;padding:28px">
+  {% csrf_token %}
+  <p class="eyebrow">{% if payment.environment == 'sandbox' %}SANDBOX TEST{% else %}SECURE PAYMENT{% endif %}</p>
+  <h1>Payment status</h1>
+  <p>{{ payment.currency }} {{ payment.amount_major }} · {{ payment.merchant_order_id }}</p>
+  <strong data-payment-state>{{ payment.status }}</strong>
+  <p data-payment-message aria-live="polite">Checking your payment with PhonePe…</p>
+  <button type="button" data-payment-recheck>Re-check status</button>
+  <a data-payment-order href="/customer/order/{{ payment.order_ids.0 }}/track" hidden>Track order</a>
+  <a href="/customer/dashboard">Back to dashboard</a>
+</section>
+<script src="{% static 'phonepe-status.js' %}?v=1" defer></script>
+{% endblock %}

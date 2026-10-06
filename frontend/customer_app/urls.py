@@ -1,8 +1,20 @@
+from common_app.road_controls import road_controls
+from common_app.views import navigation_state
 from django.urls import path
 from common_app import views as common
 from . import views
+from .guest_views import guest_browse
+from common_app.social import social_proxy
+
+from . import payments
 
 urlpatterns = [
+    path('road-controls', road_controls),
+    path('payments/<str:action>', payments.proxy),
+    path('payment/<int:transaction_id>', payments.result),
+    path('auth/<path:path>', social_proxy),
+    path('browse', guest_browse),
+    path('navigation-state', navigation_state),
     path('order/<int:order_id>/cancellation', common.cancellation),
     path('restaurant/<int:entity_id>/order-availability', views.order_availability, {'entity':'restaurant'}),
     path('menu/<int:entity_id>/order-availability', views.order_availability, {'entity':'menu'}),
@@ -24,6 +36,7 @@ urlpatterns = [
     path('files/<int:file_id>',common.download),
     path('orders',views.orders),
     path('order/<int:order_id>',views.order),
+    path('dashboard',views.restaurants),
     path('restaurants',views.restaurants),
     path('search-suggestions',views.search_suggestions),
     path('order-mode',views.order_mode),

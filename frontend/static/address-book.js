@@ -13,12 +13,14 @@
  window.addEventListener('resize',positionPopup);
  window.addEventListener('scroll',positionPopup,{passive:true});
  window.visualViewport?.addEventListener('resize',positionPopup);
- const form=popup.querySelector('form'),status=popup.querySelector('[data-address-book-status]'),save=form.querySelector('[type=submit]');
+ const form=popup.querySelector('form');
+ const country=document.createElement('input');country.type='hidden';country.name='country';form.append(country);
+ const status=popup.querySelector('[data-address-book-status]'),save=form.querySelector('[type=submit]');
  const header=document.querySelector('[data-customer-header-address]');
  let busy=false;
  popup.querySelector('gmp-place-autocomplete').addEventListener('input',()=>{
   document.dispatchEvent(new Event('dashvanti:cancel-address-lookup'));
-  status.textContent='';save.disabled=true;form.elements.latitude.value='';form.elements.longitude.value='';
+  status.textContent='';country.value='';save.disabled=true;form.elements.latitude.value='';form.elements.longitude.value='';
  });
  function showAddress(address){if(address){header.textContent=address;header.parentElement.title=address;}}
  async function load(){
@@ -58,7 +60,9 @@
   if(!popup.open)return;event.stopImmediatePropagation();
   form.hidden=false;const detail=event.detail;
   form.elements.address.value=detail.address;form.elements.latitude.value=detail.latitude;
-  form.elements.longitude.value=detail.longitude;save.disabled=false;status.textContent='Choose a label and default setting, then save.';
+  form.elements.longitude.value=detail.longitude;country.value=detail.country || '';save.disabled=false;
+  if(!form.elements.label.value.trim())form.elements.label.value='Home';
+  form.requestSubmit();
  },true);
  document.addEventListener('dashvanti:address-error',event=>{if(popup.open)status.textContent=event.detail?.message||'Address lookup failed';});
  form.addEventListener('submit',async event=>{
@@ -69,7 +73,7 @@
    const data=await response.json();showAddress(data.details);
    window.dashvantiManualAddress=true;
    document.dispatchEvent(new CustomEvent('dashvanti:map-select',{detail:{mapId:'customer-pickup-map',id:'customer-current-address',name:'Your address',address:data.details}}));
-   popup.close();
+   popup.close();document.dispatchEvent(new Event('dashvanti:delivery-location-changed'));
   }catch(error){status.textContent=error.message;}finally{busy=false;save.disabled=false;}
  });
  load().catch(()=>{});

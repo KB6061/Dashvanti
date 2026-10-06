@@ -61,6 +61,12 @@ def promotion_discount(db, user, code, subtotal, has_prior_order=None):
     value = (subtotal * Decimal(row.percent) / Decimal('100')).quantize(Decimal('0.01'))
     return min(value, row.cap) if row.cap else value
 
+def scheduled_time_value(db, customer_id, restaurant_id):
+    from backend.restaurant_experience_models import RestaurantPlan
+    from datetime import timezone
+    plan = db.get(RestaurantPlan, (customer_id, restaurant_id))
+    return plan.scheduled_for.replace(tzinfo=timezone.utc).isoformat() if plan and plan.scheduled_for else None
+
 def cart(db, user):
     rows = db.execute(select(CartItem, MenuItem).join(MenuItem, CartItem.menu_item_id == MenuItem.id).where(CartItem.customer_id == user.id)).all()
     subtotal = sum((m.price*c.quantity for c,m in rows), Decimal('0.00'))
@@ -73,10 +79,12 @@ def cart(db, user):
             'restaurant_id': m.restaurant_id,
             'restaurant_name': restaurant.name if restaurant else '',
             'restaurant_address': restaurant.address if restaurant else '',
+            'currency': restaurant.currency if restaurant else 'USD',
             'name': m.name,
             'price': m.price,
             'quantity': c.quantity,
             'special_instructions': c.special_instructions,
+            'scheduled_for': scheduled_time_value(db, user.id, m.restaurant_id),
             'subtotal': m.price * c.quantity,
             'veg': m.veg,
         }
@@ -85,6 +93,7 @@ def cart(db, user):
             'restaurant_id': m.restaurant_id,
             'restaurant_name': item['restaurant_name'],
             'restaurant_address': item['restaurant_address'],
+            'currency': item['currency'],
             'delivery_minutes': restaurant.delivery_minutes if restaurant else 30,
             'items': [],
             'item_count': 0,
@@ -150,7 +159,9 @@ def update_cart(db, user, data):
     item = db.get(MenuItem, data.menu_item_id)
     if not item or not item.available:
         raise HTTPException(404, 'Menu item unavailable')
-    if data.quantity:
+    from backend.services.restaurant_experience_service import selected_time
+    scheduled_for = selected_time(db, user, item.restaurant_id) if data.quantity else None
+    if data.quantity and not scheduled_for:
         from backend.services.store_status_service import accepting
         if not accepting(db, db.get(Restaurant, item.restaurant_id)):
             raise HTTPException(409, 'This store is currently closed')
@@ -187,12 +198,16 @@ def checkout(db, user, data):
     grouped = {}
     for c,m in rows:
         restaurant = db.get(Restaurant, m.restaurant_id)
-        if not restaurant or not restaurant.is_open or not m.available:
+        from backend.services.restaurant_experience_service import selected_time
+        scheduled_for = selected_time(db, user, m.restaurant_id)
+        if scheduled_for and data.payment_mode != 'Cash':
+            raise HTTPException(409, 'Scheduled orders currently require cash payment')
+        if not restaurant or (not restaurant.is_open and not scheduled_for) or not m.available:
             raise HTTPException(409, 'Restaurant or items unavailable')
         presentation = db.get(RestaurantPresentation, restaurant.id)
-        if presentation and presentation.busy_mode == 'paused':
+        if presentation and presentation.busy_mode == 'paused' and not scheduled_for:
             raise HTTPException(409, 'Restaurant is not accepting new orders')
-        if presentation:
+        if presentation and not scheduled_for:
             active_orders = db.scalar(select(func.count(Order.id)).where(
                 Order.restaurant_id == restaurant.id,
                 Order.status.in_(['PLACED', 'CONFIRMED', 'ACCEPTED', 'PREPARING']),
@@ -200,6 +215,11 @@ def checkout(db, user, data):
             if active_orders >= presentation.capacity:
                 raise HTTPException(409, 'Restaurant has reached its order capacity')
         grouped.setdefault(m.restaurant_id, {'restaurant': restaurant, 'rows': []})['rows'].append((c,m))
+    currencies = {group['restaurant'].currency for group in grouped.values()}
+    if len(currencies) != 1:
+        raise HTTPException(409, 'Place separate orders for restaurants using different currencies')
+    if data.payment_mode == 'PhonePe' and currencies != {'INR'}:
+        raise HTTPException(409, 'PhonePe requires INR orders')
     has_prior_order = bool(db.scalar(select(Order.id).where(Order.customer_id == user.id).limit(1)))
     orders = []
     tips = allocate_tip(data.tip if data.mode == 'delivery' else Decimal('0'), grouped)
@@ -208,16 +228,23 @@ def checkout(db, user, data):
         discount = promotion_discount(db, user, data.promo_code, subtotal, has_prior_order)
         calculated = calculate(db, subtotal, data.mode, discount)
         calculated['total'] += tips[restaurant_id]
-        order = Order(tip=tips[restaurant_id], customer_id=user.id, restaurant_id=restaurant_id, request_key=f'{base_key}:{restaurant_id}', mode=data.mode, address=address, total=calculated['total'], tax=calculated['tax'], service_fee=calculated['service_fee'], delivery_fee=calculated['delivery_fee'], discount=calculated['discount'])
+        scheduled_for = selected_time(db, user, restaurant_id)
+        order = Order(currency=group['restaurant'].currency, payment_mode=data.payment_mode, status='SCHEDULED' if scheduled_for else ('PAYMENT_PENDING' if data.payment_mode == 'PhonePe' else 'PLACED'), tip=tips[restaurant_id], customer_id=user.id, restaurant_id=restaurant_id, request_key=f'{base_key}:{restaurant_id}', mode=data.mode, address=address, total=calculated['total'], subtotal=calculated['subtotal'], tax=calculated['tax'], service_fee=calculated['service_fee'], delivery_fee=calculated['delivery_fee'], discount=calculated['discount'])
         db.add(order)
         db.flush()
+        if scheduled_for:
+            from backend.restaurant_experience_models import ScheduledOrder
+            db.add(ScheduledOrder(order_id=order.id, release_at=scheduled_for))
         from backend.services.cancellation_service import snapshot
         snapshot(db, order)
+        from backend.services.finance_service import terms
+        terms(db, order)
         for c,m in group['rows']:
             db.add(OrderItem(order_id=order.id, menu_item_id=m.id, name=m.name, quantity=c.quantity, price=m.price, special_instructions=c.special_instructions))
-        db.add(DeliveryStatus(order_id=order.id, status='PLACED'))
-        emit(db, 'ORDER_CREATED', {'order_id': order.id, 'restaurant_id': restaurant_id})
-        log_restaurant_order(order, user, group['restaurant'], group['rows'], address)
+        db.add(DeliveryStatus(order_id=order.id, status=order.status))
+        if order.status == 'PLACED':
+            emit(db, 'ORDER_CREATED', {'order_id': order.id, 'restaurant_id': restaurant_id})
+            log_restaurant_order(order, user, group['restaurant'], group['rows'], address)
         orders.append(order)
     for c,m in rows:
         db.delete(c)
@@ -239,6 +266,8 @@ def owned(db, user, order_id, lock=False):
 def listing(db, user):
     field = getattr(Order, {'customer':'customer_id','restaurant':'restaurant_id','driver':'driver_id'}[user.role])
     query = select(Order).where(field == user.id).order_by(Order.id.desc())
+    if user.role in {'restaurant', 'driver'}:
+        query = query.where(Order.status.not_in(['PAYMENT_PENDING', 'PAYMENT_FAILED', 'SANDBOX_PAID', 'SCHEDULED']))
     rows = list(db.scalars(query if user.role in {'customer', 'restaurant'} else query.limit(200)))
     order_items = {}
     for item in db.scalars(select(OrderItem).join(Order, Order.id == OrderItem.order_id).where(field == user.id)):
@@ -261,6 +290,8 @@ def listing(db, user):
             'delivery_fee': order.delivery_fee,
             'discount': order.discount,
             'created_at': order.created_at,
+            'currency': order.currency,
+            'restaurant_id': order.restaurant_id,
             'restaurant_name': restaurant.name if restaurant else '',
             'restaurant_address': restaurant.address if restaurant else '',
             'customer_name': customer.name if customer else '',

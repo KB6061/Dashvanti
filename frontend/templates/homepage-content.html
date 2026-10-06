@@ -1,0 +1,50 @@
+{% load static %}
+<section class="hero">
+  <div class="container hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow"><span class="status-dot"></span> YOUR NEIGHBORHOOD, ON THE MENU</p>
+      <h1>Good food.<br>Great mood.<br><span>At your doorstep.</span></h1>
+      <p class="hero-description">From your go-to comfort food to your next favorite spot. Discover local kitchens and make every meal a little more delicious.</p>
+      <form class="food-search" action="{{ portal_urls.customer }}/customer/restaurants" method="get" role="search">
+        <label class="sr-only" for="food-query">Search dishes, cuisines, or restaurants</label>
+        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
+        <input id="food-query" name="q" type="search" maxlength="120" placeholder="What are you craving?">
+        <button class="button button-green" type="submit">Find food <span aria-hidden="true">→</span></button>
+      </form>
+      <div class="hero-links"><span>A little inspiration:</span><a href="{{ portal_urls.customer }}/customer/restaurants?q=Biryani">Biryani</a><a href="{{ portal_urls.customer }}/customer/restaurants?q=Pizza">Pizza</a><a href="{{ portal_urls.customer }}/customer/restaurants?veg=1">Veg favorites</a></div>
+      <p class="signin-note">Sign in to browse restaurants and place your order.</p>
+    </div>
+    <div class="hero-visual">
+      <span class="orbit orbit-one" aria-hidden="true"></span><span class="orbit orbit-two" aria-hidden="true"></span>
+      <div class="hero-image-wrap"><img class="hero-image" src="{% static 'homepage/hero.jpg' %}" width="900" height="900" fetchpriority="high" alt="A colorful bowl of fresh vegetables, tofu, and greens"></div>
+      <div class="food-tag"><span class="tag-icon" aria-hidden="true">✓</span><div><strong>Fresh from local kitchens</strong><span>Made with care. Delivered with love.</span></div></div>
+      <span class="visual-caption">a little bowl of happiness <span aria-hidden="true">↗</span></span>
+      <span class="hero-spark" aria-hidden="true">✳</span>
+    </div>
+  </div>
+</section>
+<div class="promise-strip"><div class="container promises"><span><b aria-hidden="true">✦</b> Local restaurants</span><span><b aria-hidden="true">↗</b> Delivery or pickup</span><span><b aria-hidden="true">◎</b> Follow your order</span><span><b aria-hidden="true">♡</b> Something for every craving</span></div></div>
+<section class="section container" id="explore" aria-labelledby="explore-heading">
+  <div class="section-heading"><div><p class="eyebrow">FOLLOW YOUR CRAVINGS</p><h2 id="explore-heading">What sounds good today?</h2></div><a class="text-link" href="{{ portal_urls.customer }}/customer/restaurants">Explore restaurants <span aria-hidden="true">↗</span></a></div>
+  <div class="food-grid">
+    <a class="food-card" href="{{ portal_urls.customer }}/customer/restaurants?q=Biryani"><div class="food-photo"><img src="{% static 'homepage/biryani.jpg' %}" width="600" height="480" loading="lazy" alt="A fragrant rice dish with herbs and spices"><span class="photo-label">THE COMFORT PICK</span></div><div class="food-card-copy"><div><h3>Biryani & bowls</h3><p>Big flavors. Happy hearts.</p></div><span class="circle-arrow" aria-hidden="true">↗</span></div></a>
+    <a class="food-card" href="{{ portal_urls.customer }}/customer/restaurants?q=Pizza"><div class="food-photo"><img src="{% static 'homepage/pizza.jpg' %}" width="600" height="480" loading="lazy" alt="Freshly baked pizza with basil and tomato"><span class="photo-label">A SLICE OF JOY</span></div><div class="food-card-copy"><div><h3>Pizza nights</h3><p>Good times, by the slice.</p></div><span class="circle-arrow" aria-hidden="true">↗</span></div></a>
+    <a class="food-card" href="{{ portal_urls.customer }}/customer/restaurants?q=Burger"><div class="food-photo"><img src="{% static 'homepage/burger.jpg' %}" width="600" height="480" loading="lazy" alt="A burger with lettuce, tomato, and a toasted bun"><span class="photo-label">THE EVERYDAY FAVORITE</span></div><div class="food-card-copy"><div><h3>Burgers & bites</h3><p>A little messy. A lot delicious.</p></div><span class="circle-arrow" aria-hidden="true">↗</span></div></a>
+    <a class="food-card" href="{{ portal_urls.customer }}/customer/restaurants?veg=1"><div class="food-photo"><img src="{% static 'homepage/hero.jpg' %}" width="600" height="480" loading="lazy" alt="A fresh vegetable and tofu bowl"><span class="photo-label">FEEL-GOOD FOOD</span></div><div class="food-card-copy"><div><h3>Fresh & wholesome</h3><p>A fresh take on your favorites.</p></div><span class="circle-arrow" aria-hidden="true">↗</span></div></a>
+  </div>
+</section>
+<section class="how-section" id="how-it-works" aria-labelledby="how-heading"><div class="container how-grid">
+  <div class="how-intro"><p class="eyebrow">LESS PLANNING. MORE ENJOYING.</p><h2 id="how-heading">Your next great meal.<br>Just a few taps away.</h2><p>Lunch break, cozy night in, or a table full of friends. We help you find food that fits the moment.</p><a class="button button-green" href="{{ portal_urls.customer }}/customer/register">Let’s get you started <span aria-hidden="true">↗</span></a></div>
+  <ol class="steps"><li><span class="step-number">01</span><div><h3>Find your favorite</h3><p>Explore restaurants, browse menus, and discover something delicious nearby.</p></div></li><li><span class="step-number">02</span><div><h3>Make it your meal</h3><p>Add your picks to the cart and choose delivery or pickup at checkout.</p></div></li><li><span class="step-number">03</span><div><h3>Sit back. Dig in.</h3><p>Follow your order’s progress and enjoy your food when it arrives.</p></div></li></ol>
+</div></section>
+<section class="section container" id="partners" aria-labelledby="partners-heading"><div class="section-heading"><div><p class="eyebrow">GOOD THINGS GROW TOGETHER</p><h2 id="partners-heading">There’s a place for you here.</h2></div><p class="heading-note">Great kitchens. Dedicated delivery partners.<br>One delicious community.</p></div>
+  <div class="partner-grid"><article class="partner-card restaurant-partner"><span class="partner-icon" aria-hidden="true">♧</span><p class="eyebrow">FOR RESTAURANTS</p><h3>Your kitchen.<br>A whole new neighborhood.</h3><p>Bring your food to more people. Manage your menu and incoming orders from your restaurant dashboard.</p><a class="button button-green" href="{{ portal_urls.restaurant }}/restaurant/register">Partner your restaurant <span aria-hidden="true">↗</span></a></article><article class="partner-card delivery-partner"><span class="partner-icon" aria-hidden="true">↗</span><p class="eyebrow">FOR DELIVERY PARTNERS</p><h3>Take the wheel.<br>Deliver a little happiness.</h3><p>Join the delivery community. Manage delivery opportunities, track your orders, and view your earnings.</p><a class="button button-light" href="{{ portal_urls.driver }}/driver/register">Become a delivery partner <span aria-hidden="true">↗</span></a></article></div>
+</section>
+<section class="faq-section container" id="faq" aria-labelledby="faq-heading"><div><p class="eyebrow">GLAD YOU ASKED</p><h2 id="faq-heading">A few things<br>you might be wondering.</h2><p>Getting your next meal should be easy.</p></div><div class="faq-list">
+  <details><summary>How do I place my first order?<span aria-hidden="true">+</span></summary><p>Create a customer account or sign in, browse restaurants, add dishes to your cart, and complete checkout with your delivery details.</p></details>
+  <details><summary>Can I pick up my order instead?<span aria-hidden="true">+</span></summary><p>Yes. Choose pickup when ordering. Available options depend on the restaurant you select.</p></details>
+  <details><summary>How can I track my delivery?<span aria-hidden="true">+</span></summary><p>Open Your orders in the customer portal and select your order to see its status and available delivery tracking.</p></details>
+  <details><summary>What are the delivery fees and times?<span aria-hidden="true">+</span></summary><p>Delivery details depend on your restaurant and location. Review the charges and estimated timing shown during checkout before placing your order.</p></details>
+  <details><summary>How do I join as a partner?<span aria-hidden="true">+</span></summary><p>Use the restaurant or delivery partner signup above to create your account and complete your profile in the relevant portal.</p></details>
+</div></section>
+<section class="container final-cta"><span class="cta-spark" aria-hidden="true">✳</span><div><p class="eyebrow">YOUR NEXT FAVORITE IS WAITING</p><h2>Make room for something delicious.</h2><p>Good food is just the beginning.</p></div><a class="button button-light" href="{{ portal_urls.customer }}/customer/restaurants">Explore the menu <span aria-hidden="true">↗</span></a></section>

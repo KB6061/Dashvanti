@@ -19,6 +19,7 @@ class User(Identity, Base):
     phone: Mapped[str] = mapped_column(String(30), nullable=True, default='')
     token_version: Mapped[int] = mapped_column(default=0)
     order_sound_enabled: Mapped[bool] = mapped_column(default=False)
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
 
 class Customer(Base):
     __tablename__ = 'customers'
@@ -27,6 +28,7 @@ class Customer(Base):
 
 class CustomerLocation(Base):
     __tablename__ = 'customer_locations'
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     customer_id: Mapped[int] = mapped_column(ForeignKey('customers.id'), primary_key=True)
     latitude: Mapped[float] = mapped_column(Float)
     longitude: Mapped[float] = mapped_column(Float)
@@ -35,6 +37,10 @@ class CustomerLocation(Base):
 
 class Restaurant(Base):
     __tablename__ = 'restaurants'
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), default='USD', server_default='USD')
     id: Mapped[int] = mapped_column(ForeignKey('users.id'), primary_key=True)
     name: Mapped[str] = mapped_column(String(120))
     description: Mapped[str] = mapped_column(String(1000), nullable=True, default='')
@@ -59,7 +65,18 @@ class DriverLocation(Base):
     latitude: Mapped[float] = mapped_column(Float)
     longitude: Mapped[float] = mapped_column(Float)
     heading: Mapped[float | None] = mapped_column(Float, nullable=True)
+    speed: Mapped[float | None] = mapped_column(Float, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(default=now)
+
+class DriverLocationHistory(Identity, Base):
+    __tablename__ = 'driver_location_history'
+    driver_id: Mapped[int] = mapped_column(ForeignKey('drivers.id'), index=True)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey('orders.id'), nullable=True, index=True)
+    latitude: Mapped[float] = mapped_column(Float)
+    longitude: Mapped[float] = mapped_column(Float)
+    heading: Mapped[float | None] = mapped_column(Float, nullable=True)
+    speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=now)
 
 class Address(Identity, Base):
     __tablename__ = 'addresses'
@@ -97,6 +114,7 @@ class Order(Identity, Base):
     status: Mapped[str] = mapped_column(String(40), default='PLACED')
     mode: Mapped[str] = mapped_column(String(20))
     payment_mode: Mapped[str] = mapped_column(String(40), default='Card')
+    currency: Mapped[str] = mapped_column(String(3), default='USD', server_default='USD')
     address: Mapped[str] = mapped_column(String(500))
     total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     tip: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
@@ -254,3 +272,8 @@ class AuditEvent(Identity, Base):
     target: Mapped[str] = mapped_column(String(160))
     details: Mapped[str] = mapped_column(Text, default='')
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+from backend.models_driver_queue import DriverUpcomingOrder
+from backend.models_gps import EssentialGPSPoint
+
+import backend.models_driver_partner

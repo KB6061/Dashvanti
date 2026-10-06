@@ -1,0 +1,11 @@
+[Unit]
+Description=Dashvanti website, portals and streaming services
+Wants=network-online.target postgresql.service redis-server.service kafka-server.service
+Wants=dashvanti@api.service gps-streaming-service.service
+Wants=dashvanti@main.service dashvanti@customer.service dashvanti@restaurant.service dashvanti@driver.service dashvanti@admin.service
+Wants=dashvanti@docs.service dashvanti@driver-secure.service nginx.service dashvanti-monitor.timer
+After=network-online.target postgresql.service redis-server.service kafka-server.service
+After=dashvanti@api.service gps-streaming-service.service dashvanti@main.service dashvanti@customer.service dashvanti@restaurant.service dashvanti@driver.service dashvanti@admin.service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="guest-browse">
+  <p class="eyebrow">Explore Dashvanti</p>
+  <h1>Find your next favorite meal</h1>
+  <p>Browse as a guest. <a href="/customer/login">Sign in</a> to place an order.</p>
+  <form method="get" action="/customer/browse" class="guest-search">
+    <label for="guest-search" class="sr-only">Search restaurants</label>
+    <input id="guest-search" name="q" value="{{ query }}" maxlength="120" placeholder="Search restaurants, meals, or cuisines">
+    <button type="submit">Search</button>
+  </form>
+  <div class="guest-restaurants">
+    {% for restaurant in restaurants %}
+    <article class="guest-restaurant">
+      <p class="eyebrow">{{ restaurant.cuisine|default:'Local favorites' }}</p>
+      <h2>{{ restaurant.name }}</h2>
+      <p>{{ restaurant.address }}</p>
+      {% if restaurant.rating %}<p>★ {{ restaurant.rating|floatformat:1 }}</p>{% endif %}
+      <a href="/customer/login">Sign in to order</a>
+    </article>
+    {% empty %}<p>No restaurants found. Try another search.</p>{% endfor %}
+  </div>
+</section>
+<style>
+.guest-browse{max-width:1120px;margin:30px auto;padding:0 20px}.guest-browse h1{font-size:clamp(28px,4vw,42px);color:#173f30}.guest-search{display:flex;gap:10px;margin:28px 0}.guest-search input{flex:1;min-width:0}.guest-restaurants{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:18px}.guest-restaurant{padding:24px;background:white;border:1px solid #d6dfd5;border-radius:16px}.guest-restaurant h2{font-size:22px;margin:8px 0}.guest-restaurant a{display:inline-block;color:#205b42;font-weight:600;margin-top:12px}.sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0)}
+</style>
+{% endblock %}

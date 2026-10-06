@@ -1,151 +1,528 @@
 (() => {
- const host=document.querySelector('[data-live-tracking]');
- if(!host)return;
- const mapElement=host.querySelector('[data-google-map]'),role=host.dataset.trackingRole;
- const labels={CANCELLED:'Order cancelled',CANCELED:'Order cancelled',PLACED:'Order placed',ACCEPTED:'Order preparing',CONFIRMED:'Order preparing',PREPARING:'Order preparing',PACKING:'Order packing',WRAPPING_UP:'Order wrapping up',READY_FOR_PICKUP:'Order prepared and waiting for driver pickup',ARRIVED_AT_CUSTOMER:'Driver arrived at your address',DRIVER_ASSIGNED:'Driver assigned',ON_THE_WAY_TO_RESTAURANT:'Driver on the way to restaurant',ARRIVED_AT_RESTAURANT:'Driver arrived at restaurant',PICKED_UP:'Driver picked up order',ON_THE_WAY_TO_CUSTOMER:'Driver on the way to customer',DELIVERED:'Driver delivered order',REJECTED:'Order rejected'};
- const text=(selector,value)=>{const element=host.querySelector(selector);if(element)element.textContent=value;};
- let polling=false,failures=0,lastSuccess=0;
- let car,frame,state,pollTimer,routeTime=0,routeKey='',driverId,disposed=false,routeBusy=false,fitted=false,latest;
- const renderers=[];
- const carIcon=()=>({url:'data:image/svg+xml;charset=UTF-8,'+encodeURIComponent("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"80\" viewBox=\"0 0 64 80\"><defs><linearGradient id=\"body\"><stop stop-color=\"#730d16\"/><stop offset=\".22\" stop-color=\"#ff6570\"/><stop offset=\".48\" stop-color=\"#ffb0b5\"/><stop offset=\".73\" stop-color=\"#c81e32\"/><stop offset=\"1\" stop-color=\"#680b17\"/></linearGradient><linearGradient id=\"glass\" x2=\".6\" y2=\"1\"><stop stop-color=\"#9ed8f0\"/><stop offset=\".4\" stop-color=\"#29495f\"/><stop offset=\"1\" stop-color=\"#101e30\"/></linearGradient><radialGradient id=\"shadow\"><stop stop-opacity=\".5\"/><stop offset=\"1\" stop-opacity=\"0\"/></radialGradient></defs><ellipse cx=\"34\" cy=\"43\" rx=\"27\" ry=\"37\" fill=\"url(#shadow)\"/><g fill=\"#151b24\"><rect x=\"12\" y=\"17\" width=\"8\" height=\"15\" rx=\"3\"/><rect x=\"44\" y=\"17\" width=\"8\" height=\"15\" rx=\"3\"/><rect x=\"12\" y=\"51\" width=\"8\" height=\"16\" rx=\"3\"/><rect x=\"44\" y=\"51\" width=\"8\" height=\"16\" rx=\"3\"/></g><path d=\"M20 7Q32 2 44 7Q49 11 49 24L48 64Q47 73 40 75H24Q17 73 16 64L15 24Q15 11 20 7Z\" fill=\"url(#body)\" stroke=\"#344454\" stroke-width=\"1.2\"/><path d=\"M21 11Q32 7 43 11L44 23Q32 19 20 23Z\" fill=\"#ff7882\" opacity=\".75\"/><path d=\"M20 26Q32 21 44 26L41 39H23Z\" fill=\"url(#glass)\" stroke=\"#526475\"/><path d=\"M24 40H40L42 54H22Z\" fill=\"url(#body)\" stroke=\"#9e1725\"/><path d=\"M22 56H42L44 65Q32 69 20 65Z\" fill=\"url(#glass)\" stroke=\"#526475\"/><path d=\"M18 30L21 40V52L18 57ZM46 30L43 40V52L46 57Z\" fill=\"#243e51\"/><path d=\"M22 27L40 25L25 36Z\" fill=\"#fff\" opacity=\".23\"/><g fill=\"#c9d6e0\" stroke=\"#405365\"><path d=\"M16 29L10 31V35L16 34Z\"/><path d=\"M48 29L54 31V35L48 34Z\"/></g><path d=\"M19 12L25 10M39 10L45 12\" stroke=\"#fffde0\" stroke-width=\"3.5\" stroke-linecap=\"round\"/><path d=\"M19 68L25 70M39 70L45 68\" stroke=\"#e53838\" stroke-width=\"3\" stroke-linecap=\"round\"/><path d=\"M25 7H39M24 73H40\" stroke=\"#273747\" stroke-width=\"2\"/><path d=\"M18 39V51M46 39V51\" stroke=\"#fff\" stroke-opacity=\".75\"/></svg>"),scaledSize:new google.maps.Size(48,60),anchor:new google.maps.Point(24,30)});
- function move(location){
-  if(!location||!Number.isFinite(location.latitude)||!Number.isFinite(location.longitude))return;
-  const target={lat:location.latitude,lng:location.longitude};
-  if(!car){car=new google.maps.Marker({map:state.map,position:target,icon:role==='driver'?navigationIcon():window.dashvantiSilverCarIcon(),zIndex:999,title:'Delivery partner'});return;}
-  cancelAnimationFrame(frame);
-  const start=car.getPosition(),began=performance.now();
-  const animate=now=>{
-   const t=Math.min((now-began)/2000,1),ease=t*t*(3-2*t);
-   car.setPosition({lat:start.lat()+(target.lat-start.lat())*ease,lng:start.lng()+(target.lng-start.lng())*ease});
-   if(t<1&&!disposed)frame=requestAnimationFrame(animate);
-  };
-  frame=requestAnimationFrame(animate);
- }
- const navigationIcon=(heading=0)=>({url:'data:image/svg+xml;charset=UTF-8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 60 60"><circle cx="30" cy="30" r="27" fill="white" stroke="#1565e8" stroke-width="4"/><path d="M30 9L46 45L30 36L14 45Z" fill="#1565e8" transform="rotate('+ (Number(heading)||0) +' 30 30)"/></svg>'),scaledSize:new google.maps.Size(52,52),anchor:new google.maps.Point(26,26)});
- window.addEventListener('dashvanti:driver-position',event=>{
-  if(role!=='driver'||!state)return;
-  move(event.detail);
-  if(car){const icon=navigationIcon(event.detail.heading);car.setIcon(icon);state.map.panTo(car.getPosition());}
- });
- window.addEventListener('dashvanti:navigation-start',()=>{
-  if(car)car.setIcon(navigationIcon());
-  if(state){state.map.setZoom(17);if(car)state.map.panTo(car.getPosition());}
- });
- function route(origin,destination){
-  return new google.maps.DirectionsService().route({origin,destination,travelMode:google.maps.TravelMode.DRIVING,drivingOptions:{departureTime:new Date()},unitSystem:google.maps.UnitSystem.IMPERIAL});
- }
- async function drawRoutes(data){
-  const key=[data.driver_id,data.restaurant.address,data.destination,data.driver_status].join('|');
-  if(routeBusy||(key===routeKey&&Date.now()-routeTime<30000))return;
-  routeBusy=true;routeTime=Date.now();
-  try{
-   const afterPickup=['PICKED_UP','ON_THE_WAY_TO_CUSTOMER','DELIVERED'].includes(data.driver_status);
-   const restaurantPoint=Number.isFinite(data.restaurant.lat)&&Number.isFinite(data.restaurant.lng)?{lat:data.restaurant.lat,lng:data.restaurant.lng}:data.restaurant.address;
-   const customerPoint=data.customer_location||data.destination;
-   const jobs=role==='driver'?[]:[route(restaurantPoint,customerPoint)];
-   if(data.location&&!data.location.stale&&data.driver_status!=='DELIVERED'){
-    jobs.push(route({lat:data.location.latitude,lng:data.location.longitude},afterPickup?customerPoint:restaurantPoint));
-   }
-   if(!jobs.length){text('[data-tracking-eta]','Waiting for current GPS to calculate route');return;}
-   const results=await Promise.all(jobs);
-   if(disposed||latest.driver_id!==data.driver_id||latest.driver_status!==data.driver_status)return;
-   renderers.forEach(r=>r.setMap(null));renderers.length=0;
-   results.forEach((result,index)=>{
-    if(role==='driver'&&index!==results.length-1)return;
-    const renderer=new google.maps.DirectionsRenderer({map:state.map,preserveViewport:true,suppressMarkers:role==="driver"||index===1,polylineOptions:{strokeColor:role==='driver'?'#1565e8':index===0?'#286b45':'#2374cf',strokeWeight:role==='driver'?7:5,strokeOpacity:.8}});
-    renderer.setDirections(result);renderers.push(renderer);
-   });
-   const first=results[0].routes[0].legs[0];
-   const active=results[results.length-1].routes[0].legs[0];
-   const activeSeconds=(active.duration_in_traffic||active.duration).value;
-   if(role==='driver')window.dispatchEvent(new CustomEvent('dashvanti:navigation-route',{detail:{steps:active.steps,origin:active.start_address,destination:active.end_address}}));
-   window.dispatchEvent(new CustomEvent('dashvanti:route-ready',{detail:{orderId:host.dataset.orderId,status:data.driver_status,miles:active.distance.value/1609.344,minutes:Math.max(1,Math.ceil(activeSeconds/60))}}));
-   text('[data-tracking-distance]',(active.distance.value/1609.344).toFixed(1)+' mi'+(role==='driver'?' to '+(afterPickup?'customer':'restaurant')+' · '+Math.max(1,Math.ceil(activeSeconds/60))+' min':''));
+ const host = document.querySelector('[data-live-tracking]');
+ if(!host) return;
 
-   if(!fitted){
-    const bounds=results[0].routes[0].bounds;
-    if(data.location)bounds.extend({lat:data.location.latitude,lng:data.location.longitude});
-    state.map.fitBounds(bounds,40);fitted=true;
+ const mapElement = host.querySelector('[data-google-map]');
+ const role = host.dataset.trackingRole || 'customer';
+
+ const labels = {
+   CANCELLED: 'Order cancelled',
+   CANCELED: 'Order cancelled',
+   PLACED: 'Order placed',
+   ACCEPTED: 'Order preparing',
+   CONFIRMED: 'Order preparing',
+   PREPARING: 'Order preparing',
+   PACKING: 'Order packing',
+   WRAPPING_UP: 'Order wrapping up',
+   READY_FOR_PICKUP: 'Order prepared & waiting for pickup',
+   DRIVER_ASSIGNED: 'Driver assigned',
+   ON_THE_WAY_TO_RESTAURANT: 'Driver heading to restaurant',
+   ARRIVED_AT_RESTAURANT: 'Driver arrived at restaurant',
+   PICKED_UP: 'Driver picked up order',
+   ON_THE_WAY_TO_CUSTOMER: 'Driver out for delivery',
+   ARRIVED_AT_CUSTOMER: 'Driver arrived at customer address',
+   DELIVERED: 'Order delivered',
+   REJECTED: 'Order rejected'
+ };
+
+ const text = (selector, value) => {
+   const el = host.querySelector(selector);
+   if(el) el.textContent = value;
+ };
+
+ function etaPanel() {
+   let panel = host.querySelector('[data-eta-timeline]');
+   if(panel) return panel;
+   panel = document.createElement('div');
+   panel.className = 'tracking-eta-timeline';
+   panel.setAttribute('data-eta-timeline', '');
+   panel.innerHTML = '<strong data-eta-stage>Tracking driver</strong><span data-eta-time>ETA calculating…</span><span data-eta-distance></span>';
+    const mapWrap = host.querySelector('[data-google-map]')?.parentElement || host;
+    const status=mapWrap.querySelector('[data-map-status]');
+    if(role==='driver'){status?.remove();host.insertBefore(panel,host.querySelector('.navigation-bottom-controls,.driver-navigation-arrival'));}
+    else if(status)status.replaceWith(panel);else mapWrap.append(panel);
+   return panel;
+ }
+
+ function updateEtaTimeline(stage, eta, distance) {
+   const panel = etaPanel();
+   const stageEl = panel.querySelector('[data-eta-stage]');
+   const etaEl = panel.querySelector('[data-eta-time]');
+   const distanceEl = panel.querySelector('[data-eta-distance]');
+   if(stageEl) stageEl.textContent = stage || 'Tracking driver';
+   if(etaEl) etaEl.textContent = eta || 'ETA calculating…';
+   if(distanceEl) distanceEl.textContent = distance || '';
+   if(role==='driver'&&!panel.dataset.etaShown&&/\d+\s*min/.test(eta)){panel.dataset.etaShown='true';setTimeout(()=>{panel.hidden=true;},10000);}
+   const minutes=Number(String(eta).match(/(\d+)\s*min/)?.[1]);const miles=Number(String(distance).match(/([\d.]+)\s*mi/)?.[1]);
+   if(Number.isFinite(minutes)&&Number.isFinite(miles))window.dispatchEvent(new CustomEvent('dashvanti:eta',{detail:{orderId:host.dataset.orderId,minutes,miles}}));
+ }
+
+ function clearRouteBadges() {
+   routeBadges.splice(0).forEach(marker => marker.setMap(null));
+ }
+
+ let polling = false, failures = 0, lastSuccess = 0;
+ let car, frame, state, pollTimer, routeTime = 0, routeKey = '', driverId, disposed = false, routeBusy = false, fitted = false, latest, lastDriverCenter = 0;
+ let followDriver = true, controlsReady = false, routePath = [], lastLocalFix = 0, markerHeading = 0, cameraLocation = null;
+ const renderers = [];
+ const endpointMarkers = new Map();
+ const routeBadges = [];
+ const geometry = window.dashvantiRouteGeometry;
+ let routeGeometry = {path: [], steps: []}, routeResult = null, selectedRoute = 0, selectedSummary = '';
+ let previousProjection = null, lastLocation = null, offRouteFixes = 0, lastFixTime = 0, rerouteAt = 0, routeGeneration = 0;
+ let instructionControl, alternativesControl, routeMessage = '', trafficLayer, statusQueued=false;
+ let activeDuration=0,activeDistance=0,choiceDeadline=0,choiceTimer,choiceLeg='';
+ const routeHits=[];let navigating=host.classList.contains('driver-navigation-active');
+
+ function instruction() {
+   if(!instructionControl) return;
+   const index=routeGeometry.steps.findIndex(value=>value.to>(previousProjection?.metres || 0)+3);
+   const step=routeGeometry.steps[index>=0?index:routeGeometry.steps.length-1];
+   const upcoming=index>=0?(routeGeometry.steps[index+1] || step):step;
+   const maneuver=upcoming?.maneuver||'';instructionControl.querySelector('[data-maneuver]').textContent=/left/.test(maneuver)?'↰':/right/.test(maneuver)?'↱':/roundabout/.test(maneuver)?'↻':'↑';
+   const clean = value => {const element=document.createElement('div');element.innerHTML=value || '';return element.textContent.replace(/\s+/g,' ').trim();};
+   instructionControl.querySelector('[data-next-instruction]').textContent = routeMessage || clean(upcoming?.instructions) || 'Finding your route…';
+   const distance = Math.max(0, (step?.to || 0) - (previousProjection?.metres || 0));
+   instructionControl.querySelector('[data-next-distance]').textContent = routeMessage || !step ? '' : distance > 160 ? (distance/1609.344).toFixed(1)+' mi' : Math.round(distance/0.3048)+' ft';
+   const street=clean(step?.instructions).match(/(?:onto|on|toward|towards)\s+(.+?)(?:\.|$)/i)?.[1] || '';
+   instructionControl.querySelector('[data-current-street]').textContent=street;
+   const remaining=Math.max(0,(routePath.at(-1)?.metres||0)-(previousProjection?.metres||0));
+   const total=routePath.at(-1)?.metres||0;
+   if(total && latest){
+    const miles=activeDistance*remaining/total/1609.344,minutes=Math.max(1,Math.ceil(activeDuration*remaining/total/60));
+    text('[data-tracking-eta]',minutes+' min · '+miles.toFixed(1)+' mi');
+    updateEtaTimeline(labels[latest.driver_status], 'ETA '+minutes+' min',miles.toFixed(1)+' mi');
    }
+   if(upcoming && !routeMessage)window.dispatchEvent(new CustomEvent('dashvanti:navigation-guidance',{detail:{instruction:clean(upcoming.instructions),instructionId:String(index)+':'+clean(upcoming.instructions),distanceToTurn:distance,street}}));
+ }
+
+ function navigationControls() {
+   if(role !== 'driver' || instructionControl) return;
+   instructionControl=document.createElement('div');
+   instructionControl.className='navigation-instruction';
+   instructionControl.innerHTML='<b class="navigation-maneuver" data-maneuver aria-hidden="true">↑</b><span data-next-distance></span><strong data-next-instruction></strong><small data-current-street></small>';
+   instructionControl.setAttribute('role','status');
+   state.map.controls[google.maps.ControlPosition.TOP_CENTER].push(instructionControl);
+   alternativesControl=document.createElement('div');
+   alternativesControl.className='navigation-alternatives';
+   alternativesControl.setAttribute('aria-label','Available routes');
+   alternativesControl.hidden=true;
+   state.map.controls[google.maps.ControlPosition.BOTTOM_CENTER].push(alternativesControl);
+ }
+
+ function routeChoices() {
+   clearRouteBadges();
+   if(!alternativesControl || !routeResult) return;
+   alternativesControl.replaceChildren();
+   alternativesControl.hidden=navigating || Date.now()>=choiceDeadline || routeResult.routes.length<2;
+   routeResult.routes.forEach((option,index)=>{
+     const leg=option.legs[0],button=document.createElement('button');button.type='button';
+     const minutes=Math.max(1,Math.ceil((leg.duration_in_traffic || leg.duration).value/60));
+     const miles=(leg.distance.value/1609.344).toFixed(1);
+     button.setAttribute('aria-pressed',String(index===selectedRoute));
+     button.setAttribute('aria-label','Select route: '+minutes+' minutes, '+miles+' miles');
+     const title=document.createElement('strong');title.textContent=minutes+' min';
+     const detail=document.createElement('span');detail.textContent=miles+' mi';
+     button.append(title,detail);button.onclick=()=>chooseRoute(index);
+     alternativesControl.append(button);
+   });
+ }
+
+ function chooseRoute(index) {
+   if(navigating || !routeResult?.routes[index])return;
+   selectedSummary=routeResult.routes[index].summary || '';
+   selectRoute(index);
+ }
+
+ function routeVisibility() {
+   renderers.forEach((renderer,index)=>renderer.setMap(!navigating || index===selectedRoute?state.map:null));
+   routeHits.forEach((line,index)=>line.setOptions({map:navigating?null:state.map,zIndex:index===selectedRoute?30:20}));
+   if(alternativesControl)alternativesControl.hidden=navigating || Date.now()>=choiceDeadline || (routeResult?.routes.length || 0)<2;
+ }
+
+ function startChoiceWindow(leg) {
+   if(choiceLeg===leg)return;
+   choiceLeg=leg;selectedSummary='';choiceDeadline=Date.now()+10000;
+   clearTimeout(choiceTimer);
+   choiceTimer=setTimeout(()=>{if(alternativesControl)alternativesControl.hidden=true;},10000);
+ }
+
+ function selectRoute(index) {
+   selectedRoute=index;
+   renderers.forEach((renderer,i)=>renderer.setOptions({polylineOptions:{strokeColor:i===index?(role==='customer'?'#17212b':'#4032ef'):'#85a5fc',strokeWeight:i===index?(role==='customer'?5:8):5,strokeOpacity:1,zIndex:i===index?10:5}}));
+   const activeRoute=routeResult.routes[index], active=activeRoute.legs[0];
+   routeGeometry=geometry.build(activeRoute);routePath=routeGeometry.path;
+   previousProjection=null;offRouteFixes=0;
+   const activeSeconds=(active.duration_in_traffic || active.duration).value;
+   activeDuration=activeSeconds;activeDistance=active.distance.value;
+   const etaMin=Math.max(1,Math.ceil(activeSeconds/60)),distanceMiles=active.distance.value/1609.344;
+   const afterPickup=['PICKED_UP','ON_THE_WAY_TO_CUSTOMER','ARRIVED_AT_CUSTOMER'].includes(latest.driver_status);
+   const stage=afterPickup?'Driver heading to your address':latest.driver_status==='DRIVER_ASSIGNED'?'Driver assigned · Pickup':'Driver heading to restaurant';
+   updateEtaTimeline(stage, 'ETA '+etaMin+' min',distanceMiles.toFixed(1)+' mi');
+   text('[data-tracking-eta]',etaMin+' min · '+distanceMiles.toFixed(1)+' mi');
+   window.dispatchEvent(new CustomEvent('dashvanti:route-ready',{detail:{orderId:host.dataset.orderId,status:latest.driver_status,miles:distanceMiles,minutes:etaMin}}));
    const panel=host.querySelector('[data-route-directions]');
-   if(panel){panel.replaceChildren();renderers[renderers.length-1].setPanel(panel);}
-   const seconds=leg=>(leg.duration_in_traffic||leg.duration).value;
-   let eta=seconds(first);
-   if(results[1])eta=seconds(results[1].routes[0].legs[0])+(afterPickup?0:seconds(first));
-   text('[data-tracking-eta]',data.driver_status==='DELIVERED'?'Delivered':data.location?.stale?'ETA unavailable until GPS reconnects':(afterPickup?'Estimated arrival: ':'Estimated driving time: ')+Math.max(1,Math.ceil(eta/60))+' min'+(!afterPickup?' · preparation time additional':''));
-   routeKey=key;
-  }catch(error){text('[data-tracking-eta]','Route and ETA temporarily unavailable');}
-  finally{routeBusy=false;}
+   const clean=value=>{const element=document.createElement('div');element.innerHTML=value || '';return element.textContent.replace(/\s+/g,' ').trim();};
+   const spokenSteps=active.steps.map(step=>({instruction:clean(step.instructions),distance:step.distance.text,duration:step.duration?.text || '',start:geometry.point(step.start_location),end:geometry.point(step.end_location)}));
+   const summary=active.start_address+' → '+active.end_address+' · '+active.distance.text+' · '+(active.duration_in_traffic || active.duration).text;
+   if(panel){
+     const heading=document.createElement('p');heading.className='driver-route-instruction';heading.textContent=summary;
+     const list=document.createElement('ol');list.className='driver-route-steps';
+     spokenSteps.forEach(step=>{const item=document.createElement('li');item.textContent=step.instruction+' · '+step.distance;list.append(item);});
+     panel.replaceChildren(heading,list);
+   }
+   window.dispatchEvent(new CustomEvent('dashvanti:navigation-steps',{detail:{summary,steps:spokenSteps}}));
+   window.dispatchEvent(new CustomEvent('dashvanti:navigation-route',{detail:{origin:active.start_address,destination:active.end_address}}));
+   routeMessage='';routeChoices();routeVisibility();
+   if(lastLocation)move(lastLocation);
+   instruction();
  }
- async function poll(){
-  if(disposed||polling)return;polling=true;clearTimeout(pollTimer);
-  let received=false;
-  try{
-   const response=await fetch(host.dataset.trackingUrl,{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(12000)});
-   if(response.status===401||response.status===403||response.redirected){disposed=true;text('[data-tracking-health]','Sign in to resume tracking');return;}
-   if(!response.ok)throw new Error('Tracking unavailable');
-   const data=await response.json();
-   if(!data||!data.restaurant||typeof data.status!=='string')throw new Error('Invalid tracking response');
-   received=true;
-   if(role==='driver'&&window.dashvantiDriverPosition&&Date.now()-window.dashvantiDriverPosition.timestamp<15000){const position=window.dashvantiDriverPosition;data.location={...data.location,...position,stale:false};}
-   latest=data;
-   window.dispatchEvent(new CustomEvent('dashvanti:tracking',{detail:data}));
-   const rating=document.querySelector('[data-delivery-rating]');
-   if(rating)rating.hidden=data.status!=='DELIVERED';
-   text('[data-restaurant-activity]',labels[data.restaurant_status]||data.restaurant_status);
-   text('[data-driver-activity]',labels[data.driver_status]||'Waiting for a delivery partner');
-   const status=document.getElementById('order-status');if(status)status.textContent=labels[data.status]||data.status;
-   text('[data-tracking-health]',data.location?(data.location.stale?'GPS signal delayed · showing last known location':'Live GPS · '+new Date(data.location.updated_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true})):'Waiting for driver GPS');
-   const assignment=document.getElementById('driver-assignment-status');if(assignment)assignment.textContent=data.location?.driver?data.location.driver.name+' · '+data.location.driver.phone:(data.driver_id?'Driver assigned':'Waiting for a delivery partner');
-   if(data.status==='DELIVERED')text('[data-tracking-eta]','Delivered');
-   if(role==='driver'){
-    const actionMap={DRIVER_ASSIGNED:['ON_THE_WAY_TO_RESTAURANT','Navigate'],ON_THE_WAY_TO_RESTAURANT:['ARRIVED_AT_RESTAURANT','Arrived at restaurant'],ARRIVED_AT_RESTAURANT:['PICKED_UP','Picked up order'],PICKED_UP:['ON_THE_WAY_TO_CUSTOMER','Navigate'],ON_THE_WAY_TO_CUSTOMER:['DELIVERED','Delivered']};
-    const area=document.querySelector('[data-order-actions]'),next=actionMap[data.driver_status];
-    if(area){
-     const key=data.driver_status+'|'+data.restaurant_status;
-     if(area.dataset.state!==key){
-      area.dataset.state=key;area.replaceChildren();
-      if(next&&!(data.driver_status==='ARRIVED_AT_RESTAURANT'&&data.restaurant_status!=='READY_FOR_PICKUP')){
-       const form=document.createElement('form');form.method='post';
-       for(const [name,value] of [['csrfmiddlewaretoken',document.querySelector('[name=csrfmiddlewaretoken]')?.value||''],['status',next[0]]]){
-        const input=document.createElement('input');input.type='hidden';input.name=name;input.value=value;form.append(input);
-       }
-       const button=document.createElement('button');button.type='submit';button.textContent=next[1];if(next[1]==='Navigate')button.className='driver-navigate';form.append(button);area.append(form);
-       form.onsubmit=async event=>{
-        event.preventDefault();button.disabled=true;
-        try{
-         const response=await fetch('/driver/status/update',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':form.elements.csrfmiddlewaretoken.value},body:JSON.stringify({order_id:Number(host.dataset.orderId),status:next[0]}),signal:AbortSignal.timeout(12000)});
-         const result=await response.json();
-         if(!response.ok)throw new Error(result.detail||'Could not update delivery status');
-         window.dispatchEvent(new CustomEvent('dashvanti:tracking',{detail:result}));
-         area.dataset.state='';routeTime=0;
-         clearTimeout(pollTimer);void poll();
-        }catch(error){text('[data-tracking-health]',error.message);button.disabled=false;}
-       };
-      }
+
+
+
+
+ function attachControls() {
+   if(controlsReady || !state?.map)return;
+   controlsReady=true;
+   if(role==='driver')state.map.setOptions({fullscreenControl:false});
+   navigationControls();
+   trafficLayer=new google.maps.TrafficLayer();trafficLayer.setMap(state.map);
+   const controls=document.createElement('div');
+   controls.className='navigation-recenter';
+   controls.hidden=true;
+   controls.innerHTML='<button type="button" data-recenter>Recenter</button>';
+   state.map.controls[google.maps.ControlPosition.BOTTOM_LEFT].push(controls);
+   const pause=()=>{followDriver=false;controls.hidden=false;};
+   state.map.addListener('dragstart',pause);
+   mapElement.addEventListener('wheel',pause,{passive:true});
+   mapElement.addEventListener('keydown',event=>{if(['+','=','-','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key))pause();});
+   mapElement.addEventListener('touchstart',event=>{if(event.touches.length>1)pause();},{passive:true});
+   mapElement.addEventListener('click',event=>{const button=event.target.closest('button');if(button&&/zoom/i.test(button.getAttribute('aria-label')||button.title||''))pause();});
+   controls.querySelector('[data-recenter]').onclick=()=>{
+     followDriver=true;
+     if(cameraLocation){focusCamera(cameraLocation,true);controls.hidden=true;}
+   };
+ }
+
+ function endpointIcon(label, color) {
+   return {path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: color, fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 3, labelOrigin: new google.maps.Point(0, 0)};
+ }
+
+ function carIcon(heading=0) {
+   const screenHeading = (heading-(state?.map.getHeading?.() || 0)+360)%360;
+   return window.dashvantiNavigationIcon?.(screenHeading,role==='driver'?window.dashvantiNavigationAvatar?.():'car') || {url:'/static/driver-car.svg?v=1',scaledSize:new google.maps.Size(76,35),anchor:new google.maps.Point(38,28)};
+ }
+
+ function geocodePoint(value) {
+   if(!value) return Promise.reject(new Error('Missing point'));
+   if(typeof value === 'object' && Number.isFinite(Number(value.lat)) && Number.isFinite(Number(value.lng))) {
+     return Promise.resolve({lat:Number(value.lat), lng:Number(value.lng)});
+   }
+   if(typeof value === 'object' && Number.isFinite(Number(value.latitude)) && Number.isFinite(Number(value.longitude))) {
+     return Promise.resolve({lat:Number(value.latitude), lng:Number(value.longitude)});
+   }
+   return new Promise((resolve, reject) => {
+     const geocoder = state?.geocoder || new google.maps.Geocoder();
+     geocoder.geocode({address:String(value)}, (results, status) => {
+       if(status === 'OK' && results?.[0]) resolve(results[0].geometry.location);
+       else reject(new Error('Address not found'));
+     });
+   });
+ }
+
+ async function ensureEndpointMarker(key, label, title, point, color) {
+   if(!state?.map || !point) return null;
+   const position = await geocodePoint(point);
+   let marker = endpointMarkers.get(key);
+   const isDriver = key === 'driver';
+   if(!marker) {
+     marker = new google.maps.Marker({map: state.map, position, title, label:null, icon:isDriver ? carIcon(point.heading || 0) : endpointIcon(label,color), zIndex: isDriver ? 999 : 20});
+     endpointMarkers.set(key, marker);
+   } else {
+     marker.setPosition(position);
+     if(isDriver) marker.setIcon(carIcon(point.heading || 0));
+   }
+   return position;
+ }
+
+ function vehicleIcon(heading = 0) {
+   return carIcon(heading);
+ }
+
+ function routePosition(location) {
+   const projected=geometry.project(routePath,location,previousProjection?.metres ?? null);
+   if(!Number.isFinite(projected.heading))projected.heading=markerHeading;
+   const fixTime=location.timestamp || location.updated_at || latest?.updated_at;
+   if(fixTime && fixTime!==lastFixTime){
+     lastFixTime=fixTime;
+     offRouteFixes=projected.offRoute ? offRouteFixes+1 : 0;
+     if(offRouteFixes>=3 && Date.now()-rerouteAt>=10000 && latest && !routeBusy){
+       rerouteAt=Date.now();offRouteFixes=0;selectedSummary='';
+       routeMessage='Rerouting from your location…';instruction();
+       void drawRoutes({...latest,location},true);
      }
-    }
    }
-   const timeline=document.getElementById('timeline');
-   if(timeline?.tagName==='OL')timeline.replaceChildren(...(Array.isArray(data.history)?data.history:[]).map(event=>{const li=document.createElement('li');li.textContent=(labels[event.status]||event.status.replaceAll('_',' '))+' · '+new Date(event.created_at).toLocaleString([],{hour12:true});return li;}));
-   state=mapElement?.dashvantiMapState;
-   if(state){
-    const existing=state.markers.get('driver');if(existing){(existing.marker||existing).setMap(null);state.markers.delete('driver');}
-    if(driverId!==data.driver_id){cancelAnimationFrame(frame);car?.setMap(null);car=null;driverId=data.driver_id;routeKey='';fitted=false;renderers.forEach(r=>r.setMap(null));renderers.length=0;}
-    move(data.location);
-    if(['CANCELLED','CANCELED','REJECTED'].includes(data.status)){car?.setMap(null);renderers.forEach(r=>r.setMap(null));text('[data-tracking-eta]','Order cancelled');document.querySelectorAll('[data-cancel-order]').forEach(button=>button.remove());}
-    else if(data.mode==='delivery')void drawRoutes(data);
-   }
-   failures=0;lastSuccess=Date.now();
-  }catch(error){
-   failures++;
-   if(received)text('[data-tracking-health]','Location received · retrying map update');
-   else if(failures>=2||!lastSuccess)text('[data-tracking-health]',lastSuccess?'Connection interrupted · retaining last location and retrying':'Connecting to live tracking…');
-  }
-  finally{polling=false;if(!disposed)pollTimer=setTimeout(poll,Math.min(15000,3000*2**Math.min(failures,3)));}
+   return projected;
  }
- window.addEventListener('online',()=>{if(!disposed){failures=0;clearTimeout(pollTimer);void poll();}});
- window.addEventListener('pageshow',event=>{if(event.persisted){disposed=false;void poll();}});
- window.addEventListener('pagehide',()=>{disposed=true;clearTimeout(pollTimer);cancelAnimationFrame(frame);renderers.forEach(r=>r.setMap(null));});
+ function focusCamera(location, immediate=false) {
+   if(!followDriver || !state?.map)return;
+   const map=state.map;
+   const heading=markerHeading;
+   const vector=map.getRenderingType?.()===google.maps.RenderingType?.VECTOR;
+   const center={lat:location.latitude,lng:location.longitude};
+   const zoom=Number(location.speed)>15?18.5:19;
+   if(map.moveCamera && vector)map.moveCamera({center,zoom,heading,tilt:45});
+   else {map.panTo(center);if(map.getZoom()!==zoom)map.setZoom(zoom);}
+   car?.setIcon(vehicleIcon(markerHeading));
+   cameraLocation=location;
+ }
+ window.addEventListener('dashvanti:navigation-start',()=>{navigating=true;followDriver=true;clearTimeout(choiceTimer);routeVisibility();const eta=host.querySelector('[data-eta-timeline]');if(eta)eta.hidden=true;if(cameraLocation)focusCamera(cameraLocation,true);});
+ window.addEventListener('dashvanti:map-resize',()=>{if(cameraLocation&&followDriver)focusCamera(cameraLocation,true);});
+
+ window.addEventListener('dashvanti:avatar-change',()=>{car?.setIcon(carIcon(markerHeading));});
+ window.addEventListener('dashvanti:driver-position',event=>{
+   if(role!=='driver'||disposed||!state||!latest?.driver_id)return;
+   lastLocalFix=Date.now();move(event.detail);
+ });
+
+ function move(location) {
+   if(!location || !Number.isFinite(location.latitude) || !Number.isFinite(location.longitude)) return;
+   if(Number.isFinite(location.accuracy) && location.accuracy>60){
+     text('[data-tracking-health]','Waiting for a more accurate GPS fix');
+     return;
+   }
+   lastLocation=location;
+   const projected = routePosition(location);
+   let journey=geometry.journey(routePath,previousProjection,projected);
+   previousProjection=projected;instruction();
+   const target = projected.point;
+   const heading = projected.heading; markerHeading=heading;
+   cameraLocation={latitude:target.lat,longitude:target.lng,speed:location.speed};
+
+   if(!car) {
+     state.markers?.forEach(entry=>{if(entry.item.type==='driver')entry.marker.setMap(null);});
+     car = new google.maps.Marker({
+       map: state.map,
+       position: target,
+       icon: vehicleIcon(heading),
+       zIndex: 999,
+       title: 'Delivery Partner (Live)'
+     });
+     if(role==='customer'){
+       const info=new google.maps.InfoWindow({disableAutoPan:true});
+       car.addListener('click',()=>{
+         const content=document.createElement('div');
+         const title=document.createElement('strong');title.textContent=labels[latest?.driver_status] || 'Delivery partner';
+         const detail=document.createElement('p');detail.textContent=host.querySelector('[data-tracking-eta]')?.textContent || 'Waiting for GPS';
+         content.append(title,detail);info.setContent(content);info.open({map:state.map,anchor:car});
+       });
+     }
+     if(followDriver)focusCamera(cameraLocation,true);
+     return;
+   }
+
+   car.setIcon(vehicleIcon(heading));
+   cancelAnimationFrame(frame);
+   const start = car.getPosition();
+   if(projected.snapped){
+     const visible=geometry.project(routePath,{latitude:start.lat(),longitude:start.lng(),speed:0,accuracy:15});
+     journey=geometry.journey(routePath,visible,projected);
+   }
+   const began = performance.now();
+   const duration = role === 'driver' ? 800 : 1800;
+   if(journey.length>1)journey[0]=geometry.point(start);
+
+   const animate = now => {
+     const progress = Math.min((now - began) / duration, 1);
+     const ease = progress * progress * (3 - 2 * progress); // Smooth step
+     const along=geometry.interpolate(journey,ease);
+     const currentLat=along.lat,currentLng=along.lng;
+     if(projected.snapped && Number.isFinite(along.heading))markerHeading=along.heading;
+     car.setIcon(vehicleIcon(markerHeading));
+     car.setPosition({lat: currentLat, lng: currentLng});
+     if(followDriver && (now - lastDriverCenter > 80 || progress===1)) {
+       lastDriverCenter = now;
+       focusCamera({latitude:currentLat,longitude:currentLng,speed:location.speed});
+       car.setIcon(vehicleIcon(markerHeading));
+     }
+     if(progress < 1 && !disposed) {
+       frame = requestAnimationFrame(animate);
+     }
+   };
+   frame = requestAnimationFrame(animate);
+ }
+
+ function route(origin, destination) {
+   return new google.maps.DirectionsService().route({
+     origin,
+     destination,
+     travelMode: google.maps.TravelMode.DRIVING,
+     provideRouteAlternatives: role === 'driver',
+     drivingOptions: {departureTime: new Date()},
+     unitSystem: google.maps.UnitSystem.IMPERIAL
+   });
+ }
+
+ async function drawRoutes(data, force=false) {
+   const key=[data.driver_id,data.restaurant.address,data.destination,data.driver_status].join('|');
+   if(routeBusy || (!force && key===routeKey && Date.now()-routeTime<30000))return;
+   routeBusy=true;routeTime=Date.now();
+   const generation=routeGeneration;
+   try {
+     const afterPickup=['PICKED_UP','ON_THE_WAY_TO_CUSTOMER','ARRIVED_AT_CUSTOMER'].includes(data.driver_status);
+     const fallback=data.route?.fallback===true;
+     const restaurantPoint=!fallback && Number.isFinite(data.restaurant.lat) && Number.isFinite(data.restaurant.lng)?{lat:data.restaurant.lat,lng:data.restaurant.lng}:data.restaurant.address;
+     const customerPoint=!fallback && data.customer_location && data.customer_location.lat!=null && data.customer_location.lng!=null?{lat:Number(data.customer_location.lat),lng:Number(data.customer_location.lng)}:data.destination;
+     const location=role==='driver' && lastLocation && Date.now()-lastLocalFix<2500?lastLocation:data.location;
+     if(!location && role!=='customer'){text('[data-tracking-eta]','Waiting for driver location…');return;}
+     const origin=location?{lat:location.latitude,lng:location.longitude}:restaurantPoint;
+     const destination=afterPickup || !location?customerPoint:restaurantPoint;
+     const result=await route(origin,destination);
+     if(disposed || generation!==routeGeneration || latest.driver_id!==data.driver_id || latest.driver_status!==data.driver_status)return;
+     await Promise.allSettled([
+       ensureEndpointMarker('restaurant','R',data.restaurant.name || 'Restaurant',restaurantPoint,'#d83b2d'),
+       ensureEndpointMarker('destination','H','Delivery address',customerPoint,'#d83b2d')
+     ]);
+     if(disposed || generation!==routeGeneration)return;
+     startChoiceWindow(data.driver_id+'|'+String(afterPickup)+'|'+data.destination+'|'+data.restaurant.address);
+     const duration=option=>(option.legs[0].duration_in_traffic || option.legs[0].duration).value;
+     routeResult={...result,routes:[...result.routes].sort((a,b)=>duration(a)-duration(b)).slice(0,3)};
+     routeHits.splice(0).forEach(line=>line.setMap(null));
+     const previous=renderers.splice(0);
+     routeResult.routes.forEach((option,index)=>{
+       const renderer=previous[index] || new google.maps.DirectionsRenderer();
+       renderer.setOptions({map:state.map,directions:{...result,routes:[option]},routeIndex:0,preserveViewport:true,suppressMarkers:true,suppressInfoWindows:true});
+       renderers.push(renderer);
+       const hit=new google.maps.Polyline({map:state.map,path:geometry.build(option).path.map(point=>({lat:point.lat,lng:point.lng})),strokeOpacity:0.01,strokeWeight:22,clickable:true,zIndex:20});
+       hit.addListener('click',()=>chooseRoute(index));routeHits.push(hit);
+     });
+     previous.slice(renderers.length).forEach(renderer=>renderer.setMap(null));
+     const preferred=selectedSummary?routeResult.routes.findIndex(option=>option.summary===selectedSummary):-1;
+     selectRoute(preferred>=0?preferred:0);
+     routeKey=key;
+     if(!fitted){
+       fitted=true;
+       if(cameraLocation)focusCamera(cameraLocation,true);
+       else if(result.routes[0].bounds)state.map.fitBounds(result.routes[0].bounds,50);
+     }
+   }catch(_){
+     routeTime=Date.now()-25000;
+     routeMessage=force?'Route update unavailable. Retrying…':'';instruction();
+     text('[data-tracking-eta]','Calculating route & ETA…');
+   }finally{routeBusy=false;}
+ }
+
+  let lastStreamFix=0;
+  window.addEventListener('dashvanti:order-update',event=>{
+    if(String(event.detail.order_id)!==host.dataset.orderId)return;
+    const statusEl=document.getElementById('order-status');
+    if(statusEl)statusEl.textContent=labels[event.detail.canonical_status] || event.detail.status;
+    if(polling)statusQueued=true;else void poll();
+  });
+  window.addEventListener('dashvanti:navigation-update',event=>{
+    const data=event.detail;if(String(data.order_id)!==host.dataset.orderId)return;
+    if(role==='driver'&&routeResult){instruction();return;}
+    const miles=data.distance_meters/1609.344,minutes=Math.max(1,Math.ceil(data.eta_seconds/60));
+    text('[data-tracking-eta]',minutes+' min · '+miles.toFixed(1)+' mi');
+    updateEtaTimeline(labels[latest?.driver_status], 'ETA '+minutes+' min',miles.toFixed(1)+' mi');
+    if(instructionControl){instructionControl.querySelector('[data-current-street]').textContent=data.street;}
+  });
+  window.addEventListener('dashvanti:gps-stream',event=>{
+    const data=event.detail;
+    if(disposed || data.type!=='driver_location' || String(data.order_id)!==host.dataset.orderId)return;
+    if(driverId && driverId!==data.driver_id)return;
+    lastStreamFix=Date.now();
+    if(latest)latest={...latest,driver_id:data.driver_id,location:data};
+    state=mapElement?.dashvantiMapState;
+    if(state){attachControls();move(data);if(latest)void drawRoutes(latest);}
+    text('[data-tracking-health]','Live GPS · '+new Date(data.updated_at).toLocaleTimeString());
+  });
+
+  async function poll() {
+   if(disposed || polling) return;
+   polling = true; clearTimeout(pollTimer);
+   let received = false;
+   try {
+     const response = await fetch(host.dataset.trackingUrl, {credentials: 'same-origin', cache: 'no-store', signal: window.dashvantiTimeoutSignal(10000)});
+     if(response.status === 401 || response.status === 403 || response.redirected) {
+       disposed = true;
+       text('[data-tracking-health]', 'Please sign in to track order');
+       return;
+     }
+     if(!response.ok) throw new Error('Tracking unavailable');
+     const data = await response.json();
+     if(!data || typeof data.status !== 'string') throw new Error('Invalid tracking payload');
+
+     received = true;
+     latest = data;
+     window.dispatchEvent(new CustomEvent('dashvanti:tracking', {detail: data}));
+
+     // Update Order Status Steps & Labels
+     text('[data-restaurant-activity]', labels[data.restaurant_status] || data.restaurant_status);
+     text('[data-driver-activity]', labels[data.driver_status] || 'Assigning delivery partner');
+
+     const statusEl = document.getElementById('order-status');
+     if(statusEl) statusEl.textContent = labels[data.status] || data.status;
+
+     text('[data-tracking-health]', data.location ? (data.location.stale ? 'GPS signal delayed · showing last known position' : '🟢 Live GPS · Updated ' + new Date(data.location.updated_at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit', second:'2-digit', hour12:true})) : 'Driver assigned · waiting for GPS stream');
+     if(!routeKey) updateEtaTimeline(labels[data.driver_status] || 'Tracking driver', data.location ? 'Live tracking' : 'Waiting for GPS', '');
+
+     state = mapElement?.dashvantiMapState;
+     if(['CANCELLED','CANCELED','REJECTED','DELIVERED'].includes(data.status)) {
+       disposed = true; host.hidden = true;routeGeneration++;
+       clearTimeout(choiceTimer);routeHits.splice(0).forEach(line=>line.setMap(null));if(alternativesControl)alternativesControl.hidden=true;
+       trafficLayer?.setMap(null);renderers.forEach(renderer=>renderer.setMap(null));car?.setMap(null);clearRouteBadges();
+       document.querySelector('.driver-floating-navigate')?.remove();
+       return;
+     }
+     if(state) {
+       attachControls();
+       if(driverId !== data.driver_id) {
+         cancelAnimationFrame(frame);
+         car?.setMap(null); car = null;
+         driverId = data.driver_id;
+         routeKey = ''; fitted = false;routeGeneration++;
+         choiceLeg='';choiceDeadline=0;routeHits.splice(0).forEach(line=>line.setMap(null));
+         routePath=[];routeGeometry={path:[],steps:[]};previousProjection=null;lastLocation=null;offRouteFixes=0;selectedSummary='';
+         renderers.forEach(r => r.setMap(null)); renderers.length = 0; clearRouteBadges();
+       }
+
+        if(data.location && Date.now()-lastStreamFix>6000 && (role !== 'driver' || Date.now()-lastLocalFix>2500)) {
+         move({...data.location,updated_at:data.location.updated_at || data.updated_at});
+       }
+
+       if(['CANCELLED','CANCELED','REJECTED','DELIVERED'].includes(data.status)) {
+         if(data.status === 'DELIVERED') {
+           text('[data-tracking-eta]', 'Order Delivered 🎉');
+         } else {
+           car?.setMap(null);
+           renderers.forEach(r => r.setMap(null));
+           clearRouteBadges();
+           text('[data-tracking-eta]', 'Order Cancelled');
+         }
+       } else if(data.mode === 'delivery') {
+         void drawRoutes(data);
+       }
+     }
+     failures = 0; lastSuccess = Date.now();
+   } catch(error) {
+     failures++;
+     if(failures >= 2 || !lastSuccess) {
+       text('[data-tracking-health]', 'Reconnecting to live tracking stream…');
+     }
+   } finally {
+     polling = false;
+     if(!disposed) {
+       if(statusQueued){statusQueued=false;void poll();}else pollTimer = setTimeout(poll, 5000);
+     }
+   }
+ }
+
+ window.addEventListener('online', () => { if(!disposed) { failures = 0; clearTimeout(pollTimer); void poll(); } });
+  const resumeTracking=()=>{if(!disposed&&!document.hidden){clearTimeout(pollTimer);void poll();}};
+  document.addEventListener('visibilitychange',resumeTracking);window.addEventListener('focus',resumeTracking);
+  window.addEventListener('pageshow', event => { if(event.persisted) { disposed = false; void poll();window.dispatchEvent(new Event('dashvanti:map-resize')); } });
+  window.addEventListener('pagehide', event => { disposed = true;routeGeneration++; clearTimeout(pollTimer);clearTimeout(choiceTimer); cancelAnimationFrame(frame);if(!event.persisted){renderers.forEach(r => r.setMap(null));routeHits.forEach(line=>line.setMap(null)); clearRouteBadges();} });
+
  poll();
 })();

@@ -1,0 +1,52 @@
+import json
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.conf import settings
+from common_app.api import api_client
+from .views import admin_required, admin_api
+
+
+@admin_required
+def listing(request):
+    status = request.GET.get('status', '')
+    data = admin_api('GET', '/admin/driver-partners'+('?status='+status if status else ''))
+    return render(request, 'admin_app/driver_partners.html', {'items': data['items'], 'active_nav': 'driver-partners', 'title': 'Driver Partners'})
+
+
+@admin_required
+def detail(request, driver_id):
+    if request.method == 'POST':
+        try:
+            action = request.POST.get('action')
+            if action == 'document':
+                admin_api('POST', f"/admin/driver-partners/documents/{int(request.POST['document_id'])}/review", {'status': request.POST['status'], 'notes': request.POST.get('notes', '')})
+            elif action in {'refund', 'status'}:
+                admin_api('POST', f"/admin/driver-partners/{driver_id}/deposits/{int(request.POST['deposit_id'])}/{action}")
+            elif action == 'insurance':
+                admin_api('PUT', f'/admin/driver-partners/{driver_id}/insurance', {'insurer': request.POST['insurer'], 'policy_number': request.POST['policy_number'], 'expires_on': request.POST['expires_on'], 'active': bool(request.POST.get('active'))})
+            else:
+                admin_api('POST', f'/admin/driver-partners/{driver_id}/action', {'action': action, 'notes': request.POST.get('notes', '')})
+            messages.success(request, 'Driver record updated.'); return redirect(request.path)
+        except (RuntimeError, ValueError, KeyError) as exc: messages.error(request, str(exc))
+    return render(request, 'admin_app/driver_partner_detail.html', {'partner': admin_api('GET', f'/admin/driver-partners/{driver_id}'), 'active_nav': 'driver-partners', 'title': 'Driver Application'})
+
+
+@admin_required
+def document(request, document_id):
+    result = api_client().get(settings.API_URL+f'/admin/driver-partners/documents/{document_id}/file', headers={'X-Dashvanti-Admin-Secret': settings.ADMIN_PASSWORD})
+    return HttpResponse(result.content if result.is_success else b'', status=result.status_code, content_type='image/jpeg', headers={'Cache-Control': 'no-store'})
+
+
+@admin_required
+def reports(request, kind):
+    if request.method == 'POST':
+        try:
+            if kind == 'withdrawals': admin_api('POST', '/admin/driver-partners/withdrawals/'+str(int(request.POST['id'])), {'status': request.POST['status'], 'reference': request.POST['reference']})
+            elif kind == 'incidents': admin_api('POST', '/admin/driver-partners/incidents/'+str(int(request.POST['id'])), {'status': request.POST['status'], 'resolution': request.POST['resolution']})
+            messages.success(request, 'Record updated.'); return redirect(request.path)
+        except (RuntimeError, ValueError, KeyError) as exc: messages.error(request, str(exc))
+    data = admin_api('GET', '/admin/driver-partners/reports/'+kind)
+    if request.GET.get('download'):
+        return HttpResponse(json.dumps(data, indent=2), content_type='application/json', headers={'Content-Disposition': f'attachment; filename="driver-{kind}.json"'})
+    return render(request, 'admin_app/driver_partner_reports.html', {'items': data['items'], 'kind': kind, 'active_nav': 'driver-partners', 'title': 'Driver Reports'})

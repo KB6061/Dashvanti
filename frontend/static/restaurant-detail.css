@@ -79,3 +79,5 @@
 .menu-category-head button{background:#f2f4f1;color:#203929;border:0;border-radius:50%;width:32px;height:32px;padding:0;font-size:24px}
 .store-review-section{margin:24px 0}.store-review-section h2{font-size:20px}
 .store-review-section blockquote{display:inline-block;vertical-align:top;width:min(280px,100%);margin:8px 10px 8px 0;padding:16px;background:#f6f7f5;border:0;border-radius:10px}
+
+.restaurant-detail .customer-menu-card .customer-menu-order-row{justify-content:flex-start;gap:12px}.restaurant-detail .customer-menu-card .customer-menu-order-row .menu-add-plus{position:static;inset:auto;flex-shrink:0;margin:0}

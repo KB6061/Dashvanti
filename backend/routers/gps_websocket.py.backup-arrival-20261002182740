@@ -1,0 +1,120 @@
+import asyncio
+import json
+import math
+import time
+from uuid import uuid4
+from fastapi import APIRouter,WebSocket,WebSocketDisconnect
+from backend.gps_config import ORIGINS
+from backend.services.gps_auth_service import decode,validate,context,visible_order
+from backend.services.websocket_manager import Peer
+from backend.services import redis_geo_service as geo
+
+router=APIRouter()
+
+def sample(raw):
+    result={}
+    for name,low,high in [('latitude',-85.05112878,85.05112878),('longitude',-180,180),('heading',0,360),('speed',0,100),('accuracy',0,5000)]:
+        value=raw.get(name)
+        if value is None and name not in {'latitude','longitude'}:result[name]=None;continue
+        if isinstance(value,bool):raise ValueError('Invalid '+name)
+        value=float(value)
+        if not math.isfinite(value) or not low<=value<=high:raise ValueError('Invalid '+name)
+        result[name]=value
+    return result
+
+async def connection(ws,scope,resource=None):
+    if ws.headers.get('origin') and ws.headers['origin'] not in ORIGINS:
+        await ws.close(code=1008);return
+    await ws.accept();peer=None;writer=None;heartbeat=None;receiver=None
+    try:
+        raw=await asyncio.wait_for(ws.receive_text(),5)
+        if len(raw)>4096:raise ValueError('Oversized authentication')
+        claims=await asyncio.to_thread(decode,json.loads(raw)['ticket'],scope,resource)
+        if scope=='customer':resource=int(claims['sub'])
+        peer=Peer(ws,scope,resource,claims);manager=ws.app.state.manager;manager.add(peer)
+        writer=asyncio.create_task(manager.writer(peer))
+        peer.queue.put_nowait({'type':'ready','interval_seconds':4})
+        if scope=='admin':
+            ids=await ws.app.state.redis.zrange(geo.GEO,0,-1)
+            for uid in ids:
+                data=await ws.app.state.redis.get('gps:driver:'+uid)
+                if data:
+                    row=json.loads(data)
+                    try:await asyncio.to_thread(context,int(uid))
+                    except Exception:continue
+                    await peer.queue.put(row)
+        if scope=='order':
+            from backend.db import Session
+            from backend.models import Order
+            def snapshot():
+                with Session() as db:
+                    order=db.get(Order,resource)
+                    return geo.live(order.driver_id) if order and order.driver_id else None
+            data=await asyncio.to_thread(snapshot)
+            if data and await asyncio.to_thread(visible_order,resource,data['driver_id']):peer.queue.put_nowait({**data,'order_id':resource})
+        async def heartbeat_loop():
+            while True:
+                await asyncio.sleep(20)
+                await asyncio.to_thread(validate,claims)
+                if writer.done():await writer
+                peer.queue.put_nowait({'type':'ping'})
+        heartbeat=asyncio.create_task(heartbeat_loop())
+        last=0
+        while True:
+            receiver=asyncio.create_task(ws.receive_text())
+            done,_=await asyncio.wait({receiver,heartbeat,writer},return_when=asyncio.FIRST_COMPLETED)
+            if receiver not in done:
+                receiver.cancel();await asyncio.gather(receiver,return_exceptions=True)
+                for task in done:await task
+                break
+            raw=receiver.result()
+            if len(raw)>2048:raise ValueError('GPS frame too large')
+            data=json.loads(raw)
+            if data.get('type')=='pong':continue
+            if scope!='driver':raise ValueError('Read-only stream')
+            if time.monotonic()-last<3.5:
+                peer.queue.put_nowait({'type':'throttled','interval_seconds':4});continue
+            coordinates=sample(data)
+            if coordinates.get('accuracy') and coordinates['accuracy']>100:
+                peer.queue.put_nowait({'type':'error','detail':'GPS accuracy too low'});continue
+            metadata=await asyncio.to_thread(context,resource,claims['ver'])
+            if not await ws.app.state.redis.set('gps:ingest-rate:'+str(resource),'1',nx=True,px=3500):
+                peer.queue.put_nowait({'type':'throttled','interval_seconds':4});continue
+            event={'type':'driver_location','driver_id':resource,**metadata,**coordinates,'event_id':str(uuid4()),'timestamp':int(time.time()*1000)}
+            last=time.monotonic()
+            await geo.put_async(ws.app.state.redis,event)
+            try:
+                await asyncio.wait_for(ws.app.state.producer.send_and_wait('driver_location_stream',key=str(resource).encode(),value=event),8)
+                peer.queue.put_nowait({'type':'ack','event_id':event['event_id']})
+            except asyncio.TimeoutError:peer.queue.put_nowait({'type':'error','detail':'GPS stream reconnecting'})
+    except (WebSocketDisconnect,asyncio.CancelledError):pass
+    except Exception:
+        try:await ws.close(code=1008)
+        except Exception:pass
+    finally:
+        if peer:ws.app.state.manager.remove(peer)
+        for task in (writer,heartbeat,receiver):
+            if task:task.cancel()
+        await asyncio.gather(*(task for task in (writer,heartbeat,receiver) if task),return_exceptions=True)
+
+@router.websocket('/ws/driver/{driver_id}')
+async def driver(ws:WebSocket,driver_id:int):await connection(ws,'driver',driver_id)
+
+@router.websocket('/ws/driver/gps/{driver_id}')
+async def driver_gps(ws:WebSocket,driver_id:int):await connection(ws,'driver',driver_id)
+
+@router.websocket('/ws/restaurant/{restaurant_id}')
+async def restaurant(ws:WebSocket,restaurant_id:int):await connection(ws,'restaurant',restaurant_id)
+
+@router.websocket('/ws/customer')
+async def customer_feed(ws:WebSocket):
+    await connection(ws,'customer')
+
+@router.websocket('/ws/customer/{order_id}')
+async def customer(ws:WebSocket,order_id:int):await connection(ws,'order',order_id)
+
+@router.websocket('/ws/admin')
+async def admin(ws:WebSocket):await connection(ws,'admin')
+
+@router.websocket('/ws/admin/orders')
+async def admin_orders(ws:WebSocket):await connection(ws,'admin')

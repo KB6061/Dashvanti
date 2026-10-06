@@ -1,0 +1,56 @@
+{% extends 'admin_app/admin_base.html' %}{% load static %}
+{% block admin_content %}
+<link rel="stylesheet" href="{% static 'phonepe-admin.css' %}?v=1"><div data-payment-admin>
+<div class="admin-panel-head"><div><h1>Payment management</h1><p>PhonePe sandbox and production settings, transactions and refunds.</p></div><a href="/admin/payments/logs">Download JSON logs</a></div>
+<section class="admin-panel">
+  <h2>Payment methods</h2>
+  {% for method in payment_settings.methods %}
+  <form method="post" data-no-ajax="true" class="method-toggle" style="display:flex;align-items:center;gap:16px;margin:12px 0">{% csrf_token %}
+    <input type="hidden" name="action" value="toggle"><input type="hidden" name="method" value="{{ method.method }}">
+    <strong>{% if method.method == 'phonepe' %}PhonePe{% else %}{{ method.method|title }}{% endif %}</strong><span>{% if method.enabled %}Enabled{% else %}Disabled{% endif %}</span>
+    {% if not method.configured %}<small>{% if method.method == 'phonepe' %}Credentials incomplete{% else %}Gateway adapter not configured{% endif %}</small>{% endif %}
+    <button name="enabled" value="{% if method.enabled %}false{% else %}true{% endif %}">{% if method.enabled %}Disable{% else %}Enable{% endif %}</button>
+  </form>{% endfor %}
+  <p>PhonePe is available only to India-based customers paying for INR orders. Unconfigured gateways are unavailable at checkout.</p>
+</section>
+<section class="admin-panel">
+  <h2>PhonePe credentials</h2><p>Secrets are encrypted. Leave secret fields blank to retain them within the same environment and API version.</p>
+  <form method="post" data-no-ajax="true" autocomplete="off" class="admin-form-grid">{% csrf_token %}<input type="hidden" name="action" value="settings">
+    <label>Environment<select name="environment"><option value="sandbox" {% if payment_settings.environment == 'sandbox' %}selected{% endif %}>Sandbox</option><option value="production" {% if payment_settings.environment == 'production' %}selected{% endif %}>Production</option></select></label>
+    <label>API version<select name="api_version"><option value="v2" {% if payment_settings.api_version == 'v2' %}selected{% endif %}>Standard Checkout v2</option><option value="v1" {% if payment_settings.api_version == 'v1' %}selected{% endif %}>Legacy v1 — existing merchant access only</option></select></label>
+    <label>Client ID<input name="client_id" maxlength="120" value="{{ payment_settings.credentials.client_id|default:'' }}"></label>
+    <label>Client secret {% if payment_settings.credentials.client_secret %}(saved){% endif %}<input type="password" name="client_secret" autocomplete="new-password"></label>
+    <label>Client version<input type="number" name="client_version" min="1" max="100" value="{{ payment_settings.credentials.client_version|default:1 }}"></label>
+    <label>Merchant ID (legacy)<input name="merchant_id" maxlength="120" value="{{ payment_settings.credentials.merchant_id|default:'' }}"></label>
+    <label>Salt key (legacy) {% if payment_settings.credentials.salt_key %}(saved){% endif %}<input type="password" name="salt_key" autocomplete="new-password"></label>
+    <label>Salt index<input type="number" name="salt_index" min="1" max="100" value="{{ payment_settings.credentials.salt_index|default:1 }}"></label>
+    <label>API key (merchant reference) {% if payment_settings.credentials.api_key %}(saved){% endif %}<input type="password" name="api_key" autocomplete="new-password"></label>
+    <label>Webhook username<input name="webhook_username" maxlength="120" value="{{ payment_settings.credentials.webhook_username|default:'' }}"></label>
+    <label>Webhook password {% if payment_settings.credentials.webhook_password %}(saved){% endif %}<input type="password" name="webhook_password" autocomplete="new-password"></label>
+    <label><input type="checkbox" name="confirm_production"> I confirm production credentials and live charging</label>
+    <button type="submit">Save credentials</button>
+  </form>
+  <p>Configure a SHA webhook in PhonePe Developer Settings: <code>https://customer.dashvanti.com/api/phonepe/callback</code>. Use the same webhook username/password here.</p>
+</section>
+<section class="admin-panel">
+  <h2>Restaurant billing currency</h2>
+  <form method="post" data-no-ajax="true" class="admin-form-grid">{% csrf_token %}<input name="action" type="hidden" value="currency">
+    <label>Restaurant ID<input name="restaurant_id" type="number" min="1" required></label>
+    <label>Currency<select name="currency"><option value="USD">USD</option><option value="INR">INR</option></select></label>
+    <label><input type="checkbox" name="confirm_prices" required> Menu prices and fees are already in this currency. No conversion is performed.</label><button>Save currency</button>
+  </form>
+</section>
+<section class="admin-panel">
+  <h2>Transactions ({{ payment_data.total }})</h2>
+  <form method="get" class="admin-filters"><label>Status<select name="status"><option value="">All</option><option {% if status == 'PENDING' %}selected{% endif %}>PENDING</option><option {% if status == 'COMPLETED' %}selected{% endif %}>COMPLETED</option><option {% if status == 'FAILED' %}selected{% endif %}>FAILED</option><option {% if status == 'UNKNOWN' %}selected{% endif %}>UNKNOWN</option></select></label><button>Filter</button></form>
+  <div class="admin-table-scroll"><table><thead><tr><th>Transaction</th><th>Orders</th><th>Amount (minor units)</th><th>Environment</th><th>Status</th><th>Refunded (minor units)</th></tr></thead><tbody>
+    {% for row in payment_data.transactions %}<tr><td><a href="/admin/payments/{{ row.id }}">{{ row.merchant_order_id }}</a></td><td>{{ row.order_ids|join:', ' }}</td><td>{{ row.currency }} {{ row.amount }}</td><td>{{ row.environment }}</td><td>{{ row.status }}</td><td>{{ row.refunded_amount }}</td></tr>{% empty %}<tr><td colspan="6">No gateway transactions yet.</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if previous_offset != None %}<a href="?offset={{ previous_offset }}&status={{ status|urlencode }}">Previous</a>{% endif %} {% if next_offset != None %}<a href="?offset={{ next_offset }}&status={{ status|urlencode }}">Next</a>{% endif %}
+</section>
+<section class="admin-panel">
+  <h2>Settlements</h2><p>{{ settlement_data.note }}</p>
+  <div class="admin-table-scroll"><table><thead><tr><th>Reference</th><th>Environment</th><th>Amount (minor units)</th><th>Status</th><th>Date</th><th>Source</th></tr></thead><tbody>{% for row in settlement_data.items %}<tr><td>{{ row.reference }}</td><td>{{ row.environment }}</td><td>{{ row.currency }} {{ row.amount }}</td><td>{{ row.status }}</td><td>{{ row.settled_at }}</td><td>{{ row.source }}</td></tr>{% empty %}<tr><td colspan="6">No settlement report imported.</td></tr>{% endfor %}</tbody></table></div>
+  <form method="post" data-no-ajax="true">{% csrf_token %}<input type="hidden" name="action" value="settlement"><label>Import a merchant settlement record (JSON)<textarea name="settlement" rows="4" required placeholder='{"reference":"REPORT_REFERENCE","environment":"production","amount":10000,"status":"SETTLED","settled_at":"2026-10-01T12:00:00Z"}'></textarea></label><button>Import report record</button></form>
+</section>
+</div>{% endblock %}

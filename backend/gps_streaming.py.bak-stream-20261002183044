@@ -1,0 +1,31 @@
+import asyncio
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from backend.services import redis_geo_service as geo,gps_kafka_service as kafka
+from backend.services.websocket_manager import WebSocketManager
+from backend.routers.gps_websocket import router
+
+@asynccontextmanager
+async def lifespan(app):
+    app.state.redis=geo.async_client();await app.state.redis.ping()
+    app.state.producer=kafka.producer();await app.state.producer.start()
+    app.state.manager=WebSocketManager();app.state.health={'consumer':False}
+    tasks=[asyncio.create_task(kafka.consume(app.state.redis,app.state.health)),asyncio.create_task(kafka.fanout(app.state.redis,app.state.manager)),asyncio.create_task(kafka.clean(app.state.redis,app.state.manager))]
+    app.state.tasks=tasks
+    try:yield
+    finally:
+        for peer in tuple(app.state.manager.peers):await peer.websocket.close(code=1012)
+        for task in tasks:task.cancel()
+        await asyncio.gather(*tasks,return_exceptions=True)
+        await app.state.producer.stop();await app.state.redis.aclose()
+
+app=FastAPI(title='Dashvanti GPS stream',lifespan=lifespan,docs_url=None,redoc_url=None,openapi_url=None)
+app.include_router(router)
+
+@app.get('/health')
+async def health():
+    ready=app.state.health['consumer'] and all(not task.done() for task in app.state.tasks)
+    try:await app.state.redis.ping()
+    except Exception:ready=False
+    return JSONResponse({'status':'ok' if ready else 'degraded','connections':len(app.state.manager.peers)},status_code=200 if ready else 503)

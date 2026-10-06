@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="about-dashvanti">
+  <p class="eyebrow">Good food. Built on trust.</p>
+  <h1>About Dashvanti</h1>
+  <p>Dashvanti is a modern food-delivery platform built and developed by <strong>Krishna Bhandare</strong>, an IT professional based in Nashville, Tennessee, USA — 37211. The platform focuses on delivering a smooth, reliable, and secure food-ordering experience for customers and restaurants.</p>
+  <p>Our mission is to combine clean design, fast delivery, secure payments, and real-time order tracking to create a service people can trust.</p>
+  <p>Dashvanti is guided by values of quality, transparency, customer satisfaction, and strong technology.</p>
+  <section class="about-contact" aria-labelledby="about-contact-title">
+    <h2 id="about-contact-title">Support &amp; business inquiries</h2>
+    <a href="mailto:support@dashvanti.com">support@dashvanti.com</a>
+    <div><a href="tel:+16154786018">+16154786018</a><span aria-hidden="true"> / </span><a href="tel:+919096896318">+919096896318</a></div>
+  </section>
+</section>
+<style>
+.about-dashvanti{max-width:840px;margin:40px auto;padding:36px;border:1px solid #dce5d8;border-radius:20px;background:#fff;color:#173f30;box-shadow:0 8px 28px #173f3008}.about-dashvanti h1{font-size:clamp(30px,5vw,44px);line-height:1.15;margin:8px 0 24px}.about-dashvanti>p:not(.eyebrow){font-size:17px;line-height:1.8;color:#52645b;margin:0 0 20px}.about-contact{border-top:1px solid #dce5d8;padding-top:24px;margin-top:28px}.about-contact h2{font-size:20px;margin:0 0 12px}.about-contact a{color:#205b42;font-weight:600;overflow-wrap:anywhere}.about-contact div{margin-top:10px}@media(max-width:600px){.about-dashvanti{margin:20px 12px;padding:24px}.about-dashvanti>p:not(.eyebrow){font-size:16px}}
+</style>
+{% endblock %}

@@ -1,0 +1,35 @@
+import json
+import math
+from pathlib import Path
+from urllib.request import Request, urlopen
+from urllib.parse import urlencode
+from django.core.cache import cache
+from django.http import FileResponse, JsonResponse
+from django.views.decorators.http import require_GET
+from common_app.views import protected
+
+@require_GET
+def notifications_worker(request):
+ response=FileResponse((Path(__file__).resolve().parents[1]/'static/driver-notifications-worker.js').open('rb'),content_type='application/javascript')
+ response['Cache-Control']='no-cache'
+ response['Service-Worker-Allowed']='/driver/'
+ return response
+
+@protected
+@require_GET
+def road_controls(request):
+ try:
+  lat,lng=float(request.GET['lat']),float(request.GET['lng'])
+  if not math.isfinite(lat) or not math.isfinite(lng) or not -90<=lat<=90 or not -180<=lng<=180:raise ValueError()
+ except (KeyError,ValueError):return JsonResponse({'error':'Invalid coordinates'},status=400)
+ key=f'road-controls:{lat:.2f}:{lng:.2f}'
+ result=cache.get(key)
+ if result is None:
+  query=f'[out:json][timeout:8];node(around:1500,{lat:.2f},{lng:.2f})["highway"~"^(traffic_signals|stop)$"];out tags;'
+  try:
+   req=Request('https://overpass-api.de/api/interpreter',data=urlencode({'data':query}).encode(),headers={'User-Agent':'Dashvanti/1.0 support@dashvanti.com'})
+   with urlopen(req,timeout=10) as response:data=json.load(response)
+   result={'available':True,'points':[{'id':node['id'],'lat':node['lat'],'lng':node['lon'],'kind':node['tags']['highway']} for node in data.get('elements',[])][:300]}
+  except (OSError,ValueError,KeyError):result={'available':False,'points':[]}
+  cache.set(key,result,1800 if result['available'] else 60)
+ return JsonResponse(result)

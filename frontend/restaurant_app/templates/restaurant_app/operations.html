@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="restaurant-console">
+  <aside class="restaurant-sidebar"><div class="restaurant-mini-brand"><span>{{ profile.name|default:'Restaurant' }}</span></div><nav><a href="/restaurant/dashboard">Dashboard</a><a href="/restaurant/orders">Order History</a><a class="active" href="/restaurant/operations">Operations</a><a href="/restaurant/menu">Menu Manager</a><a href="/restaurant/stats">Insights</a><a href="/restaurant/content">Brand</a><a href="/restaurant/profile">Settings</a></nav></aside>
+  <div class="restaurant-workspace"><div class="restaurant-topbar"><div><p class="eyebrow">Restaurant operations</p><h1>Availability and hours</h1></div><div class="restaurant-status {% if profile.is_open %}open{% endif %}">{% if profile.is_open %}Open{% else %}Closed{% endif %}</div></div>
+    <section class="restaurant-live-controls"><form method="post">{% csrf_token %}<input type="hidden" name="dashboard_action" value="availability"><label><input type="checkbox" name="is_open" {% if profile.is_open %}checked{% endif %}> Accepting orders</label><button>Update</button></form><form method="post">{% csrf_token %}<input type="hidden" name="dashboard_action" value="hours"><label>Open <input name="opening" value="{{ profile.opening|default:'09:00' }}" pattern="(?:[01]\d|2[0-3]):[0-5]\d"></label><label>Close <input name="closing" value="{{ profile.closing|default:'22:00' }}" pattern="(?:[01]\d|2[0-3]):[0-5]\d"></label><button>Save hours</button></form></section>
+  </div>
+</section>
+{% endblock %}

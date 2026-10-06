@@ -1,0 +1,1 @@
+* * * * * krishna /usr/bin/flock -n /home/krishna/food/run/phonepe-reconcile.lock /bin/bash /home/krishna/food/deploy/reconcile-phonepe.sh >> /home/krishna/food/logs/phonepe-reconcile.log 2>&1

@@ -3,7 +3,7 @@
       {% if active_order %}
       <section class="customer-panel tracking-panel">
         <div class="tracking-panel-head"><div><p class="eyebrow">LIVE ORDER</p><h2>Order #{{ active_order.id }}</h2></div><a href="/customer/order/{{ active_order.id }}/track">Track order</a></div>
-        <div class="tracking-details"><div class="tracking-map"><span></span></div><div><strong>{{ active_order.status|title }}</strong><p>{{ active_order.mode|title }} order in progress</p><div class="tracking-progress"><span></span></div></div></div>
+        <div class="tracking-details"><a class="live-order-photo" href="/customer/order/{{ active_order.id }}/track" aria-label="Track order from {{ active_order.restaurant_name }}">{% if active_order.restaurant_photo_url %}<img src="{{ active_order.restaurant_photo_url }}" alt="{{ active_order.restaurant_name }}" width="240" height="150">{% else %}<span>{{ active_order.restaurant_name|first }}</span>{% endif %}</a><div><h3 class="live-order-restaurant">{{ active_order.restaurant_name }}</h3><strong data-order-status="{{ active_order.id }}" data-status="{{ active_order.status }}" aria-live="polite">{{ active_order.status|title }}</strong><p>{{ active_order.mode|title }} order in progress</p><div class="tracking-progress"><span></span></div></div></div>
       </section>
       {% endif %}
 <section class="customer-console">
@@ -30,7 +30,7 @@
         <div>
           <p class="eyebrow">ORDER YOUR WAY</p>
           <h2>What are you craving?</h2>
-          <form class="customer-location-form" data-customer-location-form method="post" action="/customer/location">{% csrf_token %}</form>
+          <form class="customer-location-form" data-customer-location-form data-saved-address="{% if customer_location.address %}true{% else %}false{% endif %}" method="post" action="/customer/location">{% csrf_token %}</form>
           <div hidden style="display:none" class="customer-location" data-customer-location data-address-open>
             <span class="customer-location-pin" aria-hidden="true">●</span>
             <span><small>CURRENT DELIVERY LOCATION</small><strong data-customer-location-text>{% if customer_location.address %}{{ customer_location.address }}{% elif customer_location %}{{ customer_location.latitude|floatformat:5 }}, {{ customer_location.longitude|floatformat:5 }}{% else %}Set your delivery address{% endif %}</strong><em data-customer-location-status>{% if customer_location.address %}Google Maps address saved{% elif customer_location %}Live GPS saved{% else %}Search worldwide or use live GPS{% endif %}</em></span>
@@ -103,29 +103,14 @@
         {% endfor %}
       </section>
 
+      <p data-location-scope role="status">{% if pagination.location_required %}Choose your delivery location to find restaurants within 10 miles.{% elif pagination.country_required %}Set your country in your profile or select a delivery address.{% elif pagination.radius_miles %}Showing restaurants within 10 miles of your location.{% endif %}</p>
       <div data-restaurant-shelves>{% include "customer_app/restaurant_rows.html" %}</div>
       </div>
     </section>
 
-    <aside class="customer-right-rail" data-floating-cart>
-      <button type="button" class="floating-cart-toggle" data-cart-toggle aria-expanded="true" aria-controls="floating-cart-content">Cart <span>−</span></button>
-      <section class="customer-panel cart-panel" id="floating-cart-content">
-        <div class="cart-panel-head"><div><p class="eyebrow">YOUR ORDER</p><h2>Cart</h2></div><a href="/customer/cart">Edit</a></div>
-        {% for item in cart.items %}
-        <div class="cart-line"><span>{{ item.name|first }}</span><div><strong>{{ item.name }}</strong><small>${{ item.subtotal }}</small></div><em>{{ item.quantity }}</em></div>
-        {% empty %}
-        <p class="cart-empty">Your cart is empty. Add a favorite to get started.</p>
-        {% endfor %}
-        <div class="cart-total"><span>Subtotal</span><strong>${{ cart.subtotal }}</strong><span>Delivery fee</span><strong>${{ cart.delivery_fee }}</strong></div>
-        <a class="checkout-button" href="/customer/checkout">Continue to checkout</a>
-      </section>
-    </aside>
 
-    <section class="customer-left-rail">
 
-      <section class="customer-panel review-panel"><p class="eyebrow">CUSTOMER REVIEWS</p><h2>People love Dashvanti</h2>{% for review in reviews %}<blockquote><strong>{{ review.name }}</strong><span>5 star</span><p>{{ review.text }}</p></blockquote>{% endfor %}</section>
-      <section class="customer-panel rewards-panel"><p class="eyebrow">OFFERS & REWARDS</p><h2>More ways to save</h2>{% for reward in rewards %}<p class="reward-row">{{ reward }}<span>Active</span></p>{% endfor %}</section>
-    </section>
+
   </div>
 </section>
 

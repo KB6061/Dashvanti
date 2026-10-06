@@ -1,10 +1,11 @@
 import hashlib
 import secrets
+import re
 from datetime import timedelta
 import jwt
 from fastapi import HTTPException
 from pwdlib import PasswordHash
-from sqlalchemy import select
+from sqlalchemy import select, func
 from backend.config import settings
 from backend.models import User, Customer, Restaurant, Driver, PasswordReset, now
 from backend.services.kafka_event_service import emit
@@ -13,6 +14,8 @@ passwords = PasswordHash.recommended()
 DUMMY = passwords.hash('dummy-password-for-timing-only')
 
 def register(db, data):
+    if (data.latitude is None)!=(data.longitude is None):
+        raise HTTPException(422,'Provide both location coordinates')
     email = str(data.email).lower()
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(409, 'Email already registered')
@@ -21,14 +24,27 @@ def register(db, data):
     db.flush()
     profile = {'customer': Customer, 'restaurant': Restaurant, 'driver': Driver}[data.role]
     db.add(profile(id=user.id, **({'name': data.name} if data.role == 'restaurant' else {})))
+    if data.role=='customer' and data.latitude is not None:
+        from backend.schemas import CustomerLocationInput
+        from backend.services.user_service import save_current_location
+        db.flush()
+        save_current_location(db,user,CustomerLocationInput(latitude=data.latitude,longitude=data.longitude))
+    if data.role == 'driver':
+        db.flush()
+        from backend.services.driver_partner_service import partner
+        partner(db, user.id)
     emit(db, 'USER_REGISTERED', {'user_id': user.id, 'role': user.role})
     return {'id': user.id}
 
 def login(db, data):
     identifier = str(data.email).strip().lower()
     user = db.scalar(select(User).where(User.email == identifier))
-    if not user:
-        user = db.scalar(select(User).where(User.phone == identifier))
+    if not user and '@' not in identifier:
+        digits = re.sub(r'[^0-9]', '', identifier)
+        if 7 <= len(digits) <= 15:
+            matches = list(db.scalars(select(User).where(User.role == data.role,
+                func.regexp_replace(User.phone, '[^0-9]', '', 'g') == digits).limit(2)))
+            user = matches[0] if len(matches) == 1 else None
     valid = passwords.verify(data.password, user.password if user else DUMMY)
     if not valid or not user or user.role != data.role:
         raise HTTPException(401, 'Invalid credentials')

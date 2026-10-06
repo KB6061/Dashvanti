@@ -1,3 +1,4 @@
+from django.conf import settings
 from functools import wraps
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
@@ -11,6 +12,8 @@ def protected(view):
     def wrapped(request,*args,**kwargs):
         portal = request.path.strip('/').split('/')[0]
         if not request.session.get('token') or request.session.get('role') != portal:
+            if request.path == '/customer/restaurants':
+                request.session['customer_browse_path'] = request.get_full_path()
             return redirect('/'+portal+'/login')
         try:
             return view(request,*args,**kwargs)
@@ -23,6 +26,16 @@ def protected(view):
 
 @require_http_methods(['GET','POST'])
 def auth(request, role, action):
+    if request.method == 'GET' and action in {'login', 'register'} and request.session.get('token') and request.session.get('role') == role:
+        try:
+            call(request, 'GET', '/me')
+        except APIError as exc:
+            if exc.status == 401:
+                request.session.flush()
+            else:
+                return render(request, 'error.html', {'error': str(exc)}, status=exc.status)
+        else:
+            return redirect('/' + role + '/dashboard')
     cls = {'login':LoginForm,'register':RegisterForm,'forgot':ForgotForm,'reset':ResetForm}[action]
     form = cls(request.POST or None,initial={'token':request.GET.get('token','')})
     if request.method == 'POST' and form.is_valid():
@@ -32,6 +45,8 @@ def auth(request, role, action):
         try:
             result = call(request,'POST','/auth/'+action,data)
             if action == 'login':
+                request.session.pop('social_login', None)
+                request.session.pop('auth_provider', None)
                 request.session.cycle_key()
                 request.session['token'] = result['access_token']
                 if result.get('refresh_token'):
@@ -49,7 +64,10 @@ def auth(request, role, action):
                     request.session['email'] = ''
                     request.session['order_mode'] = 'delivery'
                     request.session['profile_photo'] = None
-                return redirect('/'+role+('/restaurants' if role=='customer' else '/dashboard'))
+                if role == 'customer':
+                    request.session.pop('customer_browse_path', None)
+                    return redirect('/customer/dashboard')
+                return redirect('/'+role+'/dashboard')
             messages.success(request,result.get('message','Account created. Please sign in.'))
             return redirect('/'+role+'/login')
         except APIError as exc:
@@ -68,7 +86,8 @@ def auth(request, role, action):
         'welcome_eyebrow': welcome[0], 'welcome_title': welcome[1], 'welcome_description': welcome[2],
         'customer_login_form': login_form,
         'customer_register_form': register_form,
-        'open_auth': action if request.method == 'POST' else ''})
+        'customer_login_method': 'mobile' if request.POST.get('login_method') == 'mobile' else 'email',
+        'open_auth': action})
 
 @require_http_methods(['POST'])
 def logout(request,role):
@@ -124,12 +143,23 @@ def orders(request):
 def order(request,order_id):
     role = request.session['role']
     if request.method=='POST':
-        call(request,'POST',f'/orders/{order_id}/status',{'status':request.POST.get('status','')})
+        if role == 'driver' and request.POST.get('otp'):
+            updated=call(request,'POST',f'/orders/{order_id}/delivery-otp',{'otp':request.POST['otp']})
+        else:
+            updated=call(request,'POST','/order/update',{'order_id':order_id,'status':request.POST.get('status','')})
+        if role=='driver' and request.POST.get('status')=='DELIVERED':
+            upcoming=next((row for row in call(request,'GET','/orders') if row['status'] not in {'DELIVERED','CANCELLED','CANCELED','REJECTED'}),None)
+            if upcoming:
+                url=f"/driver/order/{upcoming['id']}"
+                if request.headers.get('X-Requested-With')=='XMLHttpRequest':return JsonResponse({'redirect_url':url})
+                return redirect(url)
+        if request.headers.get('X-Requested-With')=='XMLHttpRequest':return JsonResponse({'live_order_update':True,'order_id':order_id,'status':updated['status']})
         return redirect(request.path)
     result = call(request,'GET',f'/orders/{order_id}')
     if result['order']['status']=='CANCELLED':
         result['cancellation']=call(request,'GET',f'/orders/{order_id}/cancellation')
     if role == 'customer':
+        result['delivery_otp'] = call(request, 'GET', f'/orders/{order_id}/delivery-otp').get('otp')
         try:
             result['driver_location'] = call(request,'GET',f'/order/{order_id}/driver/location')
         except APIError:
@@ -168,6 +198,7 @@ def order(request,order_id):
     transitions['driver'].update({'DRIVER_ASSIGNED':['ON_THE_WAY_TO_RESTAURANT'],'ON_THE_WAY_TO_RESTAURANT':['ARRIVED_AT_RESTAURANT'],'ARRIVED_AT_RESTAURANT':['PICKED_UP']})
     action_status = result['order']['status']
     if role == 'driver':
+        result['requires_delivery_otp'] = call(request, 'GET', f'/orders/{order_id}/delivery-verification')['required']
         activity = call(request, 'GET', f'/order/{order_id}/tracking')
         action_status = activity['driver_status']
         if action_status == 'ARRIVED_AT_RESTAURANT' and activity['restaurant_status'] != 'READY_FOR_PICKUP':
@@ -175,6 +206,7 @@ def order(request,order_id):
     result['actions'] = transitions.get(role,{}).get(action_status,[])
     if role=='restaurant' and result['order']['mode']=='pickup' and result['order']['status']=='READY_FOR_PICKUP':
         result['actions'] = ['DELIVERED']
+    result['show_live_map'] = request.GET.get('history') != '1' and result['order']['status'] not in {'DELIVERED', 'CANCELLED', 'CANCELED', 'REJECTED'}
     return render(request,role+'_app/order.html',result)
 
 @protected
@@ -301,3 +333,38 @@ def cancellation(request, order_id):
         return JsonResponse({'detail':str(exc)},status=exc.status)
     except ValueError:
         return JsonResponse({'detail':'Invalid request'},status=400)
+
+
+@require_http_methods(['GET'])
+def navigation_state(request):
+    portal = request.path.strip('/').split('/')[0]
+    if portal == 'admin':
+        if not request.session.get('admin_authenticated'):
+            return JsonResponse({'detail': 'Sign in required'}, status=401)
+        from admin_app.views import admin_api
+        result = admin_api('GET', '/operations/admin/navigation-state')
+    else:
+        if not request.session.get('token') or request.session.get('role') != portal:
+            return JsonResponse({'detail': 'Sign in required'}, status=401)
+        result = call(request, 'GET', '/operations/navigation-state')
+    return JsonResponse(result, headers={'Cache-Control': 'no-store'})
+
+@require_http_methods(['GET'])
+def about_us(request):
+    portal = settings.PORTAL_ROLE or 'customer'
+    return render(request, 'about_us.html', {'portal': portal, 'signed_in': bool(request.session.get('token')) and request.session.get('role') == portal, 'about_base': 'landing-base.html' if portal == 'main' else 'base.html', 'founder_photo': '/static/krishna-founder.webp?v=2' if (settings.BASE_DIR / 'static' / 'krishna-founder.webp').is_file() else None})
+
+@require_http_methods(['POST'])
+def gps_ticket(request,portal):
+    try:
+        if portal=='admin':
+            if not request.session.get('admin_authenticated'):return JsonResponse({'detail':'Sign in required'},status=401)
+            from admin_app.views import admin_api
+            result=admin_api('POST','/gps/admin-ticket')
+        else:
+            if not request.session.get('token') or request.session.get('role')!=portal:return JsonResponse({'detail':'Sign in required'},status=401)
+            order_id=request.GET.get('order_id')
+            result=call(request,'POST','/gps/ticket',params={'order_id':int(order_id)} if order_id else None)
+        return JsonResponse(result,headers={'Cache-Control':'private, no-store'})
+    except APIError as exc:return JsonResponse({'detail':str(exc)},status=exc.status)
+    except (RuntimeError,ValueError):return JsonResponse({'detail':'GPS streaming unavailable'},status=503)

@@ -1,0 +1,18 @@
+[Unit]
+Description=Dashvanti driver offers and partner notifications
+Wants=network-online.target
+After=network-online.target postgresql.service redis-server.service dashvanti@api.service
+PartOf=dashvanti.target
+
+[Service]
+User=krishna
+Group=krishna
+WorkingDirectory=/home/krishna/food
+ExecStart=/bin/bash /home/krishna/food/deploy/systemd/run-driver-partners.sh
+Restart=always
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,48 @@
+(() => {
+ const workspace=document.querySelector('.admin-workspace');
+ if(!workspace)return;
+ const sidebar=workspace.querySelector('.admin-sidebar');
+ const toggle=workspace.querySelector('[data-admin-nav-toggle]');
+ const backdrop=workspace.querySelector('[data-admin-nav-close]');
+ const mobile=matchMedia('(max-width:720px)');
+ const setOpen=(open)=>{
+  workspace.classList.toggle('nav-open',open);
+  document.body.classList.toggle('admin-nav-open',open);
+  toggle.setAttribute('aria-expanded',String(open));
+  toggle.setAttribute('aria-label',open?'Close navigation':'Open navigation');
+  backdrop.hidden=!open;
+  sidebar.inert=mobile.matches&&!open;
+  if(open)sidebar.querySelector('a').focus();
+ };
+ toggle.addEventListener('click',()=>setOpen(!workspace.classList.contains('nav-open')));
+ backdrop.addEventListener('click',()=>{setOpen(false);toggle.focus()});
+ mobile.addEventListener('change',()=>setOpen(false));
+ setOpen(false);
+ const fundToggle=workspace.querySelector('[data-fund-toggle]');
+ const subnav=workspace.querySelector('#admin-fund-subnav');
+ fundToggle.addEventListener('click',()=>{
+  subnav.hidden=!subnav.hidden;
+  fundToggle.setAttribute('aria-expanded',String(!subnav.hidden));
+ });
+ sidebar.querySelectorAll('a').forEach(link=>link.addEventListener('click',()=>{if(mobile.matches)setOpen(false)}));
+ document.querySelectorAll('.admin-actions details').forEach(details=>{
+  const form=details.querySelector('form');
+  if(!form)return;
+  const close=document.createElement('button');
+  close.type='button';close.className='admin-edit-close';close.textContent='Close';
+  close.addEventListener('click',()=>{details.open=false;details.querySelector('summary').focus()});
+  form.append(close);
+ });
+ document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'){
+   document.querySelectorAll('.admin-actions details[open]').forEach(details=>details.open=false);
+   if(workspace.classList.contains('nav-open')){setOpen(false);toggle.focus()}
+  }
+  if(event.key==='Tab'&&workspace.classList.contains('nav-open')){
+   const nodes=[...sidebar.querySelectorAll('a,button')].filter(node=>node.getClientRects().length);
+   const first=nodes[0],last=nodes.at(-1);
+   if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}
+   else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
+  }
+ });
+})();

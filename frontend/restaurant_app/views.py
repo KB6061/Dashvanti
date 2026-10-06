@@ -23,8 +23,34 @@ NEXT_ACTIONS = {
 }
 
 @protected
-@require_http_methods(['GET','POST'])
+@require_http_methods(['GET'])
 def dashboard(request):
+    profile = call(request,'GET','/me')['restaurant']
+    content = call(request, 'GET', '/content/restaurant')
+    orders = call(request,'GET','/orders')
+    banner_id = content.get('cover_file_id')
+    logo_id = content.get('logo_file_id')
+    active_orders = []
+    for row in orders:
+        if row.get('status') not in {'DELIVERED','REJECTED','CANCELLED','CANCELED'}:
+            current = dict(row)
+            current['actions'] = NEXT_ACTIONS.get(current.get('status'), [])
+            if current.get('status') == 'READY_FOR_PICKUP' and current.get('mode') != 'pickup':
+                current['actions'] = []
+            active_orders.append(current)
+    context = {
+        'profile': profile,
+        'content': content,
+        'banner_url': f'/restaurant/files/{banner_id}' if banner_id else '',
+        'restaurant_logo_url': f'/restaurant/files/{logo_id}' if logo_id else '',
+        'active_orders': active_orders[:8],
+        'title':'Restaurant dashboard',
+    }
+    return render(request,'restaurant_app/dashboard.html',context)
+
+@protected
+@require_http_methods(['GET','POST'])
+def operations(request):
     if request.method == 'POST' and request.POST.get('dashboard_action') == 'availability':
         call(request,'POST','/restaurant/availability/toggle',{'is_open': request.POST.get('is_open') == 'on'})
         return redirect(request.path)
@@ -32,43 +58,7 @@ def dashboard(request):
         call(request,'POST','/restaurant/hours/update',{'opening': request.POST.get('opening','09:00'), 'closing': request.POST.get('closing','22:00')})
         return redirect(request.path)
     profile = call(request,'GET','/me')['restaurant']
-    content = call(request, 'GET', '/content/restaurant')
-    banner_id = content.get('cover_file_id')
-    logo_id = content.get('logo_file_id')
-    orders = call(request,'GET','/orders')
-    menu_items = call(request,'GET','/menu')
-    stats_data = call(request,'GET','/stats',params={'period':'daily'})
-    lane_cards = []
-    for title, statuses in LANES:
-        rows = []
-        for row in orders:
-            if row['status'] in statuses:
-                row = dict(row)
-                row['actions'] = NEXT_ACTIONS.get(row['status'], [])
-                if row['status'] == 'READY_FOR_PICKUP' and row.get('mode') != 'pickup':
-                    row['actions'] = []
-                rows.append(row)
-        lane_cards.append({'title': title, 'orders': rows[:5]})
-    visible_items = [item for item in menu_items if item.get('available')]
-    top_items = stats_data.get('top_items') or [{'name': item['name'], 'units': ''} for item in visible_items[:4]]
-    chart_points = [42, 76, 61, 124, 88, 132, 95]
-    context = {
-        'profile': profile,
-        'content': content,
-        'banner_url': f'/restaurant/files/{banner_id}' if banner_id else '',
-        'restaurant_logo_url': f'/restaurant/files/{logo_id}' if logo_id else '',
-        'orders': orders,
-        'incoming_orders': [row for row in orders if row.get('status') == 'PLACED'][:3],
-        'menu_items': menu_items[:6],
-        'lane_cards': lane_cards,
-        'stats': stats_data,
-        'top_items': top_items[:4],
-        'chart_points': chart_points,
-        'new_orders': sum(1 for row in orders if row['status'] in ['PLACED','ACCEPTED','CONFIRMED']),
-        'prep_time': profile.get('delivery_minutes') or 18,
-        'title':'Restaurant dashboard',
-    }
-    return render(request,'restaurant_app/dashboard.html',context)
+    return render(request,'restaurant_app/operations.html',{'profile': profile, 'title':'Restaurant operations'})
 
 @protected
 @require_http_methods(['GET','POST'])
