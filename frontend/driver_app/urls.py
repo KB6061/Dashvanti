@@ -1,10 +1,12 @@
-from . import partner_views
+from . import partner_views, agreement_views
 from common_app.views import navigation_state
 from django.urls import path
 from common_app import views as common
 from . import views, map_controls
 
 urlpatterns = [
+    path('agreement', agreement_views.agreement),
+    path('agreement/read', agreement_views.read),
     path('partner', partner_views.dashboard),
     path('partner/feed', partner_views.feed),
     path('partner/documents/<int:document_id>', partner_views.document),

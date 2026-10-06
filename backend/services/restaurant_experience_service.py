@@ -238,6 +238,8 @@ def release_due(db, order_ids=None):
             order.status = 'PLACED'
             db.add(DeliveryStatus(order_id=order.id, status='PLACED'))
             emit(db, 'ORDER_CREATED', {'order_id': order.id, 'restaurant_id': order.restaurant_id})
+            from backend.services.restaurant_auto_accept_service import accept_order
+            accept_order(db, order)
         schedule.released = True
     db.flush()
 

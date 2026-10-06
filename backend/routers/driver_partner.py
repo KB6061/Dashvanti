@@ -12,6 +12,11 @@ from backend.services import driver_partner_service as service, driver_deposit_s
 router = APIRouter(tags=['Driver partners'])
 driver = role('driver')
 
+def onboarding_driver(user=Depends(driver), db=Depends(get_db, scope='function')):
+    from backend.services.driver_agreement_service import require_accepted
+    require_accepted(db, user.id)
+    return user
+
 
 @router.get('/driver-partner/health')
 def worker_health():
@@ -49,37 +54,37 @@ def bank(driver_id: int, actor=Depends(admin), db=Depends(get_db, scope='functio
 
 
 @router.get('/driver/partner')
-def profile(user=Depends(driver), db=Depends(get_db, scope='function')):
+def profile(user=Depends(onboarding_driver), db=Depends(get_db, scope='function')):
     return service.overview(db, user.id)
 
 
 @router.put('/driver/partner')
-def registration(data: Registration, user=Depends(driver), db=Depends(get_db, scope='function')):
+def registration(data: Registration, user=Depends(onboarding_driver), db=Depends(get_db, scope='function')):
     return service.save_registration(db, user, data)
 
 
 @router.post('/driver/partner/submit')
-def submit(user=Depends(driver), db=Depends(get_db, scope='function')):
+def submit(user=Depends(onboarding_driver), db=Depends(get_db, scope='function')):
     return service.submit(db, user)
 
 
 @router.post('/driver/partner/documents')
-def upload(kind: str = Form(...), expires_on: date | None = Form(None), file: UploadFile = File(...), user=Depends(driver), db=Depends(get_db, scope='function')):
+def upload(kind: str = Form(...), expires_on: date | None = Form(None), file: UploadFile = File(...), user=Depends(onboarding_driver), db=Depends(get_db, scope='function')):
     return service.upload(db, user, kind, file, expires_on)
 
 
 @router.get('/driver/partner/documents/{document_id}')
-def document(document_id: int, user=Depends(driver), db=Depends(get_db, scope='function')):
+def document(document_id: int, user=Depends(onboarding_driver), db=Depends(get_db, scope='function')):
     return Response(service.document_bytes(db, document_id, user), media_type='image/jpeg', headers={'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
 
 
 @router.post('/driver/partner/deposit')
-def deposit_pay(user=Depends(driver), db=Depends(get_db, scope='function')):
+def deposit_pay(user=Depends(onboarding_driver), db=Depends(get_db, scope='function')):
     return deposits.pay(db, user)
 
 
 @router.post('/driver/partner/deposits/{deposit_id}/status')
-def deposit_status(deposit_id: int, user=Depends(driver), db=Depends(get_db, scope='function')):
+def deposit_status(deposit_id: int, user=Depends(onboarding_driver), db=Depends(get_db, scope='function')):
     return deposits.recheck(db, user.id, deposit_id)
 
 

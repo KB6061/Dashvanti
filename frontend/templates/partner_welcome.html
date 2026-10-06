@@ -17,10 +17,10 @@
     <button type="submit">Sign In</button>
     <a href="/{{ portal }}/forgot">Forgot password?</a>
   </form>
-  <form method="post" action="/{{ portal }}/register" data-auth-form="register" data-no-ajax="true" hidden>
+  {% if driver_registration_allowed %}<form method="post" action="/{{ portal }}/register" data-auth-form="register" data-no-ajax="true" hidden>
     {% csrf_token %}{{ customer_register_form.as_p }}
     <button type="submit">Sign Up</button>
-  </form>
+  </form>{% endif %}
 </dialog>
 <style>
 body:has(.customer-welcome){background:#f7f8f2}
@@ -43,6 +43,7 @@ body:has(.customer-welcome) .public-auth-actions .auth-action{background:#205b42
 (() => {
   const popup = document.getElementById('customer-auth-popup');
   function openForm(action) {
+    if (action === 'register' && !popup.querySelector('[data-auth-form=register]')) { window.location.assign('/driver/agreement'); return; }
     popup.querySelectorAll('[data-auth-form]').forEach(form => { form.hidden = form.dataset.authForm !== action; });
     document.getElementById('customer-auth-title').textContent = action === 'login' ? 'Welcome back' : 'Create your account';
     if (!popup.open) popup.showModal();

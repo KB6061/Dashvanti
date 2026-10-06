@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="restaurant-console" data-auto-refresh>
+  <aside class="restaurant-sidebar">
+    <div class="restaurant-mini-brand">{% if restaurant_logo_url %}<img src="{{ restaurant_logo_url }}" alt="{{ profile.name }} logo">{% endif %}<span>{{ profile.name|default:'Dashvanti' }}</span></div>
+    <nav>
+      <a class="active" href="/restaurant/dashboard">Dashboard</a>
+      <a href="/restaurant/orders">Order History</a>
+      <a href="/restaurant/operations">Operations</a>
+      <a href="/restaurant/menu">Menu Manager</a>
+      <a href="/restaurant/stats">Insights</a>
+      <a href="/restaurant/content">Brand</a>
+      <a href="/restaurant/profile">Settings</a>
+    </nav>
+  </aside>
+
+  <div class="restaurant-workspace">
+    <div class="restaurant-topbar">
+      <div>
+        <p class="eyebrow">Restaurant command center</p>
+        <h1>{{ profile.name|default:'Restaurant Dashboard' }}</h1>
+      </div>
+      <div class="restaurant-status {% if profile.is_open %}open{% endif %}">
+        {% if profile.is_open %}Open{% else %}Closed{% endif %}
+      </div>
+    </div>
+    <section class="restaurant-dashboard-banner">{% if banner_url %}<img src="{{ banner_url }}" alt="{{ profile.name }} banner">{% else %}<div><strong>{{ profile.name|default:'Restaurant' }}</strong><a href="/restaurant/content">Upload hotel banner</a></div>{% endif %}</section>
+
+    <section class="role-map-card restaurant-dashboard-map">
+      <div class="role-map-head"><div><p class="eyebrow">RESTAURANT LOCATION</p><h2>Pickup and delivery map</h2><span>{{ profile.address|default:'Add the restaurant address in settings.' }}</span></div></div>
+      <div class="dashvanti-google-map" data-google-map data-map-show-name="true" data-map-address="{{ profile.address }}" data-map-title="{{ profile.name }}" aria-label="Restaurant location map"></div>
+      <p class="map-load-status" data-map-status>Loading Google Maps…</p>
+    </section>
+
+    <section class="restaurant-live-status">
+      <div class="panel-head"><h2>Live order status</h2><a href="/restaurant/orders">View order history</a></div>
+      <div class="order-table-wrap"><table class="order-data-table"><thead><tr><th>Order</th><th>Customer</th><th>Status</th><th>Action</th></tr></thead><tbody>
+      {% for order in active_orders %}<tr><td><a href="/restaurant/order/{{ order.id }}">#{{ order.id }}</a></td><td>{{ order.customer_name|default:'Customer' }}</td><td><strong>{{ order.status|title }}</strong></td><td>{% if order.actions %}{% for value,label in order.actions %}<form method="post" action="/restaurant/order/{{ order.id }}" style="display:inline">{% csrf_token %}<button name="status" value="{{ value }}">{{ label }}</button></form>{% endfor %}{% else %}Updated{% endif %}</td></tr>{% empty %}<tr><td colspan="4">No active orders.</td></tr>{% endfor %}
+      </tbody></table></div>
+    </section>
+
+  </div>
+</section>
+{% endblock %}

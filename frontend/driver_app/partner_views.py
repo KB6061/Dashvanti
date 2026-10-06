@@ -14,7 +14,11 @@ from .partner_forms import PartnerForm
 @require_http_methods(['GET', 'POST'])
 def dashboard(request):
     if request.session.get('role') != 'driver': return HttpResponse(status=403)
-    data = call(request, 'GET', '/driver/partner')
+    try:
+        data = call(request, 'GET', '/driver/partner')
+    except APIError as exc:
+        if exc.status == 403: return redirect('/driver/agreement')
+        raise
     form = PartnerForm(initial={**data['profile'], 'email': data['email'], 'mobile': data['mobile']})
     if request.method == 'POST':
         action = request.POST.get('action')

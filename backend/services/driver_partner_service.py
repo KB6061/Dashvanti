@@ -72,6 +72,8 @@ def audit(db, actor, driver_id, action, notes):
 
 
 def save_registration(db, user, data):
+    from backend.services.driver_agreement_service import require_accepted
+    require_accepted(db, user.id)
     row = partner(db, user.id, True)
     if row.status not in {'DRAFT', 'REJECTED', 'MORE_DOCUMENTS'} or row.account_status == 'DEACTIVATED':
         raise HTTPException(409, 'Registration cannot be edited in its current state')
@@ -114,6 +116,8 @@ def save_registration(db, user, data):
 
 
 def upload(db, user, kind, file, expires_on=None):
+    from backend.services.driver_agreement_service import require_accepted
+    require_accepted(db, user.id)
     row = partner(db, user.id, True)
     if row.status not in {'DRAFT', 'MORE_DOCUMENTS', 'REJECTED'} or row.account_status == 'DEACTIVATED':
         raise HTTPException(409, 'Documents cannot be changed while under review or approved')
@@ -161,6 +165,8 @@ def verification(db, driver_id, save=False):
     values = unseal(row.profile if row else '')
     docs = {d.kind: d for d in db.scalars(select(DriverDocument).where(DriverDocument.driver_id == driver_id))}
     issues = []
+    from backend.services.driver_agreement_service import accepted_for_driver
+    if not accepted_for_driver(db, driver_id): issues.append('Accept the current Driver Partner Agreement')
     if not values: issues.append('Complete the registration form')
     for key in ('terms', 'driver_policy', 'insurance_policy', 'identity_consent'):
         if not values.get(key): issues.append('Consent required: ' + key)
@@ -173,6 +179,8 @@ def verification(db, driver_id, save=False):
 
 
 def submit(db, user):
+    from backend.services.driver_agreement_service import require_accepted
+    require_accepted(db, user.id)
     row = partner(db, user.id, True)
     if row.status not in {'DRAFT', 'MORE_DOCUMENTS', 'REJECTED'}: raise HTTPException(409, 'Application already submitted')
     report = verification(db, user.id, True)
@@ -242,7 +250,7 @@ def overview(db, driver_id, admin=False):
         'documents': [{'id': d.id, 'kind': d.kind, 'expires_on': d.expires_on, 'status': d.status, 'notes': d.notes} for d in db.scalars(select(DriverDocument).where(DriverDocument.driver_id == driver_id))],
         'deposits': [{'id': d.id, 'payment_id': d.payment_id, 'amount': d.amount, 'currency': d.currency, 'status': d.status} for d in db.scalars(select(DriverDeposit).where(DriverDeposit.driver_id == driver_id))],
         'insurance': {'active': bool(insurance and insurance.active and insurance.expires_on and insurance.expires_on >= date.today()), 'insurer': insurance.insurer if insurance else '', 'policy_number': insurance.policy_number if insurance else '', 'expires_on': insurance.expires_on if insurance else None,
-            'proposed_death_cover': 1000000, 'proposed_disability_cover': 1000000, 'proposed_hospitalization_cover': 200000}, 'updated_at': row.updated_at}
+            'platform_provided': False}, 'updated_at': row.updated_at}
 
 
 def incident(db, user, data):

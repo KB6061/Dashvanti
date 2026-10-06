@@ -1,0 +1,4 @@
+body :is(.portal-error,.errorlist,.errorlist *, .alert-danger,.invalid-feedback,.text-danger,[data-form-error],[data-error],.field-error,.form-error,.payment-error,.partner-error,.agreement-error,.customer-auth-error){color:#b42318!important}
+body .alert-danger{background:#fff1f0!important;border:1px solid #f2a69d!important}
+body :is(.portal-error,.errorlist,[data-form-error]){line-height:1.5}
+body .errorlist{padding:10px 14px 10px 30px;background:#fff1f0;border-radius:8px}

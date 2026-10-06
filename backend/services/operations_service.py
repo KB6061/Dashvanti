@@ -434,6 +434,8 @@ def admin_delete_user(db, user_id):
         db.execute(delete(MenuItem).where(MenuItem.restaurant_id == user_id))
         db.execute(delete(Restaurant).where(Restaurant.id == user_id))
     elif role_name == 'driver':
+        from backend.services.driver_removal_service import remove_partner_records
+        remove_partner_records(db, user_id)
         db.execute(delete(DriverLocationHistory).where(DriverLocationHistory.driver_id == user_id))
         db.execute(update(Order).where(Order.driver_id == user_id).values(driver_id=None))
         db.execute(delete(DriverLocation).where(DriverLocation.driver_id == user_id))

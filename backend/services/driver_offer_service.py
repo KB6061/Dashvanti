@@ -47,5 +47,7 @@ def reject(db, driver_id, order_id):
 
 
 def tick(db):
+    from backend.services.restaurant_auto_accept_service import accept_pending
+    accept_pending(db)
     rows = db.scalars(select(Order).where(Order.driver_id.is_(None), Order.mode == 'delivery', Order.status.in_(['ACCEPTED','PREPARING','PACKING','WRAPPING_UP','READY_FOR_PICKUP'])).order_by(Order.id).limit(100).with_for_update(skip_locked=True))
     for order in rows: ensure_offer(db, order)

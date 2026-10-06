@@ -156,6 +156,8 @@ def availability(data: Availability, user=Depends(driver), db=Depends(get_db, sc
 
 @router.put('/driver/profile')
 def driver_profile(data: DriverProfile, user=Depends(driver), db=Depends(get_db, scope='function')):
+    from backend.services.driver_agreement_service import require_accepted
+    require_accepted(db, user.id)
     return delivery_service.update_profile(db,user,data)
 
 @router.post('/driver/location/update')

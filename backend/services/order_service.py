@@ -245,6 +245,8 @@ def checkout(db, user, data):
         if order.status == 'PLACED':
             emit(db, 'ORDER_CREATED', {'order_id': order.id, 'restaurant_id': restaurant_id})
             log_restaurant_order(order, user, group['restaurant'], group['rows'], address)
+            from backend.services.restaurant_auto_accept_service import accept_order
+            accept_order(db, order)
         orders.append(order)
     for c,m in rows:
         db.delete(c)

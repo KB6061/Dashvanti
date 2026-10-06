@@ -6,6 +6,7 @@ from pydantic import BaseModel, EmailStr, Field, AliasChoices
 Role = Literal['customer', 'restaurant', 'driver']
 
 class Register(BaseModel):
+    driver_agreement_token: str | None = Field(default=None, min_length=20, max_length=200)
     latitude: float | None = Field(default=None,ge=-90,le=90,allow_inf_nan=False)
     longitude: float | None = Field(default=None,ge=-180,le=180,allow_inf_nan=False)
     email: EmailStr

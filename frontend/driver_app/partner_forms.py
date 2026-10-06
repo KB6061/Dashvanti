@@ -26,5 +26,5 @@ class PartnerForm(forms.Form):
     nominee_phone = forms.CharField(max_length=20)
     terms = forms.BooleanField(label='I agree to the Terms & Conditions')
     driver_policy = forms.BooleanField(label='I agree to the Driver Policy')
-    insurance_policy = forms.BooleanField(label='I accept the Insurance Policy and understand coverage requires an active issued policy')
+    insurance_policy = forms.BooleanField(label='I understand Dashvanti does not provide insurance or injury, disability, hospitalization or death benefits')
     identity_consent = forms.BooleanField(label='I consent to private identity-document processing for driver onboarding')

@@ -14,6 +14,10 @@ passwords = PasswordHash.recommended()
 DUMMY = passwords.hash('dummy-password-for-timing-only')
 
 def register(db, data):
+    consent = None
+    if data.role == 'driver':
+        from backend.services.driver_agreement_service import registration_consent
+        consent = registration_consent(db, data)
     if (data.latitude is None)!=(data.longitude is None):
         raise HTTPException(422,'Provide both location coordinates')
     email = str(data.email).lower()
@@ -33,6 +37,8 @@ def register(db, data):
         db.flush()
         from backend.services.driver_partner_service import partner
         partner(db, user.id)
+        consent.driver_id = user.id
+        consent.registered_at = now()
     emit(db, 'USER_REGISTERED', {'user_id': user.id, 'role': user.role})
     return {'id': user.id}
 

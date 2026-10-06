@@ -67,6 +67,8 @@ def run_once(channel):
 
 
 if __name__ == '__main__':
+    from backend.services.order_broadcast_service import install
+    install()
     def notifications(channel):
         while True:
             try: run_once(channel)

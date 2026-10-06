@@ -49,3 +49,5 @@ app.include_router(customer_push_router.router, prefix="/api")
 
 from backend.routers import driver_partner
 app.include_router(driver_partner.router, prefix='/api')
+from backend.routers import driver_agreement
+app.include_router(driver_agreement.router, prefix='/api')

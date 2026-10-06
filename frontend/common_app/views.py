@@ -16,6 +16,9 @@ def protected(view):
                 request.session['customer_browse_path'] = request.get_full_path()
             return redirect('/'+portal+'/login')
         try:
+            if portal == 'driver' and (request.path == '/driver/files' or request.path.startswith('/driver/files/')):
+                from driver_app.agreement_views import consent_status
+                if not consent_status(request).get('accepted'): return redirect('/driver/agreement')
             return view(request,*args,**kwargs)
         except APIError as exc:
             if exc.status == 401:
@@ -36,12 +39,25 @@ def auth(request, role, action):
                 return render(request, 'error.html', {'error': str(exc)}, status=exc.status)
         else:
             return redirect('/' + role + '/dashboard')
+    agreement = None
+    if role == 'driver' and action == 'register':
+        from driver_app.agreement_views import consent_status
+        try:
+            agreement = consent_status(request)
+        except APIError as exc:
+            return render(request, 'error.html', {'error': str(exc)}, status=exc.status)
+        if not agreement.get('accepted'):
+            return redirect('/driver/agreement')
     cls = {'login':LoginForm,'register':RegisterForm,'forgot':ForgotForm,'reset':ResetForm}[action]
-    form = cls(request.POST or None,initial={'token':request.GET.get('token','')})
+    initial = {'token':request.GET.get('token','')}
+    if agreement: initial['name'] = agreement['full_legal_name']
+    form = cls(request.POST or None, initial=initial)
     if request.method == 'POST' and form.is_valid():
         data = dict(form.cleaned_data)
         if action in {'login','register'}:
             data['role'] = role
+        if role == 'driver' and action == 'register':
+            data['driver_agreement_token'] = request.session.get('driver_agreement_token')
         try:
             result = call(request,'POST','/auth/'+action,data)
             if action == 'login':
@@ -68,6 +84,9 @@ def auth(request, role, action):
                     request.session.pop('customer_browse_path', None)
                     return redirect('/customer/dashboard')
                 return redirect('/'+role+'/dashboard')
+            if role == 'driver' and action == 'register':
+                from driver_app.agreement_views import clear_consent
+                clear_consent(request)
             messages.success(request,result.get('message','Account created. Please sign in.'))
             return redirect('/'+role+'/login')
         except APIError as exc:
@@ -87,6 +106,7 @@ def auth(request, role, action):
         'customer_login_form': login_form,
         'customer_register_form': register_form,
         'customer_login_method': 'mobile' if request.POST.get('login_method') == 'mobile' else 'email',
+        'driver_registration_allowed': role != 'driver' or action == 'register',
         'open_auth': action})
 
 @require_http_methods(['POST'])

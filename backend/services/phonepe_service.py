@@ -217,6 +217,8 @@ def apply_status(db, transaction_id, response):
             if payment.environment == 'production':
                 from backend.services.kafka_event_service import emit
                 emit(db, 'ORDER_CREATED', {'order_id': order.id, 'restaurant_id': order.restaurant_id})
+                from backend.services.restaurant_auto_accept_service import accept_order
+                accept_order(db, order)
         elif state == 'FAILED' and order.status == 'PAYMENT_PENDING':
             order.status = 'PAYMENT_FAILED'
     from backend.services.driver_deposit_service import sync

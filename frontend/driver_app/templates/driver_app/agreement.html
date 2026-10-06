@@ -1,0 +1,24 @@
+{% extends "auth.html" %}{% load static %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'driver-agreement.css' %}">
+<main class="driver-agreement-page">
+  <header><p class="agreement-eyebrow">DRIVER ONBOARDING · STEP 1</p><h1>{{ title }}</h1><p>Read the entire agreement and confirm every acknowledgement before registering.</p><p class="agreement-version">Agreement version {{ agreement_version }}</p></header>
+  {% if error %}<p role="alert" class="agreement-error">{{ error }}</p>{% endif %}
+  <div id="driver-agreement-text" class="agreement-text" tabindex="0" role="region" aria-label="Complete Driver Partner Agreement">
+    {% for section in sections %}<section><h2>{{ section.title }}</h2><p>{{ section.text }}</p></section>{% endfor %}
+    <p class="agreement-end">End of agreement. Review and confirm the acknowledgements below.</p>
+  </div>
+  <p id="agreement-read-status" role="status" aria-live="polite">Scroll to the bottom of the agreement to continue.</p>
+  <form method="post" id="driver-agreement-form" data-no-ajax="true">
+    {% csrf_token %}<input type="hidden" name="agreement_version" value="{{ agreement_version }}">
+    <fieldset><legend>Required acknowledgements</legend>
+      {% for item in acknowledgements %}<label class="agreement-check"><input type="checkbox" name="ack_{{ item.key }}" required><span>{{ item.text }}</span></label>{% endfor %}
+    </fieldset>
+    <label class="agreement-name" for="agreement-legal-name">Full Legal Name<input id="agreement-legal-name" name="full_legal_name" type="text" autocomplete="name" minlength="2" maxlength="160" required></label>
+    <p class="agreement-statement">{{ statement }}</p>
+    <noscript><p class="agreement-error">Enable JavaScript to record the agreement scroll confirmation and continue.</p></noscript>
+    <div class="agreement-actions"><button type="submit" name="action" value="accept" id="agreement-continue" disabled>Accept &amp; Continue</button><button type="submit" name="action" value="decline" formnovalidate class="agreement-decline">Decline</button></div>
+  </form>
+</main>
+<script src="{% static 'driver-agreement.js' %}" defer></script>
+{% endblock %}

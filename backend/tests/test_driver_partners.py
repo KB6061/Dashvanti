@@ -21,6 +21,11 @@ class DriverPartnerTests(unittest.TestCase):
         self.user = User(name='Partner audit', email='partner-audit-'+secrets.token_hex(8)+'@example.com', password='not-a-login', role='driver', phone='')
         self.db.add(self.user); self.db.flush()
         self.db.add(Driver(id=self.user.id, online=False)); self.db.flush()
+        from backend.services import driver_agreement_service as agreements
+        from backend.schemas_driver_agreement import AgreementRead, AgreementAccept
+        value = agreements.start(self.db, self.user)
+        agreements.record_read(self.db, value['token'], AgreementRead(agreement_version=value['agreement_version'], scroll_completed=True), self.user)
+        agreements.accept(self.db, value['token'], AgreementAccept(agreement_version=value['agreement_version'], full_legal_name=self.user.name, acknowledgements={item['key']: True for item in value['acknowledgements']}), {'ip_address':'127.0.0.1','browser_information':'unittest','device_information':'unittest'}, self.user)
 
     def tearDown(self):
         self.db.rollback(); self.db.close()
@@ -50,6 +55,11 @@ class DriverPartnerTests(unittest.TestCase):
         data=self.data(); service.save_registration(self.db,self.user,data)
         other=User(name='Other', email='partner-audit-'+secrets.token_hex(8)+'@example.com',password='x',role='driver')
         self.db.add(other);self.db.flush();self.db.add(Driver(id=other.id));self.db.flush()
+        from backend.services import driver_agreement_service as agreements
+        from backend.schemas_driver_agreement import AgreementRead, AgreementAccept
+        value=agreements.start(self.db,other)
+        agreements.record_read(self.db,value['token'],AgreementRead(agreement_version=value['agreement_version'],scroll_completed=True),other)
+        agreements.accept(self.db,value['token'],AgreementAccept(agreement_version=value['agreement_version'],full_legal_name=other.name,acknowledgements={item['key']:True for item in value['acknowledgements']}),{},other)
         with self.assertRaises(HTTPException) as exc:
             service.save_registration(self.db,other,data.model_copy(update={'email':other.email,'mobile':'+918'+str(secrets.randbelow(10**9)).zfill(9)}))
         self.assertEqual(exc.exception.status_code,409)

@@ -1,0 +1,134 @@
+import io
+import secrets
+import unittest
+from datetime import timedelta
+from types import SimpleNamespace
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+from starlette.requests import Request
+from backend.db import Session, get_db
+from backend.models import User, Driver, now
+from backend.models_driver_agreement import DriverAgreementAcceptance
+from backend.schemas import Register
+from backend.schemas_driver_agreement import AgreementRead, AgreementAccept
+from backend.services import driver_agreement_service as service, auth_service
+from backend.routers import driver_agreement, auth, driver_partner
+
+
+class DriverAgreementTests(unittest.TestCase):
+    def setUp(self):
+        self.db = Session()
+        self.value = service.start(self.db)
+        self.token = self.value['token']
+        self.email = 'agreement-audit-'+secrets.token_hex(10)+'@example.com'
+        self.data = Register(email=self.email, name='Agreement Audit Driver', password='audit-password', role='driver', driver_agreement_token=self.token)
+
+    def tearDown(self):
+        self.db.rollback(); self.db.close()
+
+    def read(self, user=None):
+        return service.record_read(self.db, self.token, AgreementRead(agreement_version=self.value['agreement_version'], scroll_completed=True), user)
+
+    def acceptance(self, **kwargs):
+        return AgreementAccept(agreement_version=self.value['agreement_version'], full_legal_name='Agreement Audit Driver', acknowledgements={item['key']:True for item in self.value['acknowledgements']}, **kwargs)
+
+    def accept(self, user=None):
+        self.read(user)
+        return service.accept(self.db, self.token, self.acceptance(), {'ip_address':'192.0.2.1','browser_information':'Audit browser','device_information':'Audit mobile'}, user)
+
+    def test_no_account_without_agreement(self):
+        for token in [None, 'forged-token-value-with-no-valid-record', self.token]:
+            with self.assertRaises(HTTPException) as exc:
+                auth_service.register(self.db, self.data.model_copy(update={'driver_agreement_token':token}))
+            self.assertEqual(exc.exception.status_code,403)
+        self.assertIsNone(self.db.scalar(select(User).where(User.email==self.email)))
+
+    def test_read_and_every_ack_required(self):
+        with self.assertRaises(HTTPException): service.accept(self.db,self.token,self.acceptance(),{})
+        self.read()
+        for item in self.value['acknowledgements']:
+            data=self.acceptance(); data.acknowledgements[item['key']]=False
+            with self.assertRaises(HTTPException): service.accept(self.db,self.token,data,{})
+        data=self.acceptance();data.acknowledgements.pop('agreement')
+        with self.assertRaises(HTTPException):service.accept(self.db,self.token,data,{})
+        self.assertFalse(service.session(self.db,self.token).accepted)
+
+    def test_legal_name_required(self):
+        from pydantic import ValidationError
+        for value in ['  ', '1234']:
+            with self.assertRaises(ValidationError):self.acceptance().model_copy().model_validate({**self.acceptance().model_dump(),'full_legal_name':value})
+
+    def test_audit_immutable_and_registration_single_use(self):
+        self.accept();row=service.session(self.db,self.token);stamp=row.accepted_at
+        service.accept(self.db,self.token,self.acceptance(),{'ip_address':'192.0.2.99'})
+        self.assertEqual(row.accepted_at,stamp);self.assertEqual(row.ip_address,'192.0.2.1')
+        self.assertNotEqual(row.token_digest,self.token);self.assertEqual(row.acceptance_timestamp,stamp)
+        self.assertIn('No platform-provided insurance',row.agreement_content)
+        result=auth_service.register(self.db,self.data);self.db.flush()
+        self.assertEqual(row.driver_id,result['id']);self.assertIsNotNone(row.registered_at)
+        with self.assertRaises(HTTPException):auth_service.register(self.db,self.data.model_copy(update={'email':'another-'+self.email}))
+
+    def test_name_must_match_agreement(self):
+        self.accept()
+        with self.assertRaises(HTTPException) as exc:auth_service.register(self.db,self.data.model_copy(update={'name':'Other Person'}))
+        self.assertEqual(exc.exception.status_code,422)
+
+    def test_decline_and_expiration_block_registration(self):
+        self.accept();service.decline(self.db,self.token)
+        with self.assertRaises(HTTPException):auth_service.register(self.db,self.data)
+        self.value=service.start(self.db);self.token=self.value['token'];self.accept()
+        service.session(self.db,self.token).expires_at=now()-timedelta(seconds=1)
+        with self.assertRaises(HTTPException):service.registration_consent(self.db,self.data.model_copy(update={'driver_agreement_token':self.token}))
+
+    def test_existing_driver_and_other_account_isolation(self):
+        user=User(email=self.email,name='Existing audit',password='x',role='driver');self.db.add(user);self.db.flush();self.db.add(Driver(id=user.id));self.db.flush()
+        self.value=service.start(self.db,user);self.token=self.value['token']
+        with self.assertRaises(HTTPException):self.read()
+        with self.assertRaises(HTTPException):self.read(SimpleNamespace(id=user.id+1,role='driver'))
+        self.accept(user);self.assertTrue(service.status(self.db,user=user)['accepted'])
+        service.require_accepted(self.db,user.id)
+
+    def test_current_version_required(self):
+        self.accept();service.session(self.db,self.token).agreement_version='old-version'
+        self.assertFalse(service.status(self.db,self.token)['accepted'])
+        with self.assertRaises(HTTPException):auth_service.register(self.db,self.data)
+
+    def test_uploads_blocked_before_reading_file(self):
+        from backend.services import file_service, driver_partner_service
+        user=User(email=self.email,name='Audit',password='x',role='driver');self.db.add(user);self.db.flush();self.db.add(Driver(id=user.id));self.db.flush()
+        file=SimpleNamespace(file=io.BytesIO(b'not-an-image'))
+        for attempt in [lambda:file_service.upload(self.db,user,file,'license',None),lambda:driver_partner_service.upload(self.db,user,'license',file)]:
+            with self.assertRaises(HTTPException) as exc:attempt()
+            self.assertEqual(exc.exception.status_code,403)
+        self.assertEqual(file.file.tell(),0)
+        for attempt in [lambda:file_service.listing(self.db,user),lambda:file_service.download(self.db,user,1)]:
+            with self.assertRaises(HTTPException) as exc:attempt()
+            self.assertEqual(exc.exception.status_code,403)
+
+    def test_http_registration_and_onboarding_guard(self):
+        app=FastAPI()
+        for router in [driver_agreement.router,auth.router,driver_partner.router]:app.include_router(router)
+        def session():yield self.db
+        app.dependency_overrides[get_db]=session
+        with TestClient(app) as client:
+            self.assertEqual(client.post('/auth/register',json=self.data.model_dump()).status_code,403)
+            headers={'X-Driver-Agreement-Token':self.token}
+            self.assertEqual(client.post('/driver/agreement/accept',headers=headers,json=self.acceptance().model_dump()).status_code,422)
+            self.assertEqual(client.post('/driver/agreement/read',headers=headers,json={'agreement_version':self.value['agreement_version'],'scroll_completed':True}).status_code,200)
+            self.assertEqual(client.post('/driver/agreement/accept',headers=headers,json=self.acceptance().model_dump()).status_code,200)
+            response=client.post('/auth/register',json=self.data.model_dump());self.assertEqual(response.status_code,201,response.text)
+            user=self.db.get(User,response.json()['id'])
+            from backend.services.session_service import issue_tokens
+            bearer={'Authorization':'Bearer '+issue_tokens(user)['access_token']}
+            self.assertEqual(client.get('/driver/partner',headers=bearer).status_code,200)
+            row=service.accepted_for_driver(self.db,user.id);row.cancelled_at=now();self.db.flush()
+            self.assertEqual(client.get('/driver/partner',headers=bearer).status_code,403)
+            self.assertEqual(client.post('/driver/partner/documents',headers=bearer,data={'kind':'selfie'},files={'file':('test.png',b'bad','image/png')}).status_code,403)
+
+    def test_unsigned_metadata_cannot_spoof_ip(self):
+        request=Request({'type':'http','client':('192.0.2.10',1234),'headers':[(b'user-agent',b'Audit browser'),(b'x-dashvanti-consent-ip',b'203.0.113.99'),(b'x-forwarded-for',b'203.0.113.99')]})
+        self.assertEqual(service.request_context(request)['ip_address'],'192.0.2.10')
+
+
+if __name__ == '__main__': unittest.main()
