@@ -39,7 +39,10 @@ def geocode(**params):
             return None
         country = next((item['shortText'] for item in result['addressComponents'] if 'country' in item['types']), None)
         point = result['location']
-        found={'country': normalize_country(country), 'latitude': point['latitude'], 'longitude': point['longitude'],'address':result.get('formattedAddress')}
+        components = result['addressComponents']
+        state = next((item.get('longText', '') for item in components if 'administrative_area_level_1' in item['types']), '')
+        city = next((item.get('longText', '') for item in components if set(item['types']).intersection({'locality', 'postal_town', 'administrative_area_level_3'})), '')
+        found={'country': normalize_country(country), 'state': state, 'city': city, 'latitude': point['latitude'], 'longitude': point['longitude'],'address':result.get('formattedAddress')}
         _geocoding_cache[cache_key]=(time.monotonic()+3600,found)
         return found
     except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):

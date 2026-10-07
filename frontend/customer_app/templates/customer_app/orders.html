@@ -9,7 +9,7 @@
 {% for order in orders %}
 <article data-order-url="/customer/order/{{ order.id }}" tabindex="0" class="history-order" data-history-status="{{ order.status }}">
 <time data-local-order-date datetime="{{ order.created_at }}">{{ order.created_at }}</time>
-<details><summary><strong>{{ order.restaurant_name }}</strong><span>Order #{{ order.id }} · <span data-order-status="{{ order.id }}" data-status="{{ order.status }}" aria-live="polite">{{ order.status|title }}</span></span></summary>
+<details><summary><strong>{{ order.restaurant_name }}</strong><span>Order -{{ order.id }} · <span data-order-status="{{ order.id }}" data-status="{{ order.status }}" aria-live="polite">{{ order.status|title }}</span></span></summary>
 <p>{{ order.mode|title }} · {{ order.address }}</p>
 <ul>{% for item in order.items %}<li>{{ item.quantity }} × {{ item.name }} · &#36;{{ item.price|floatformat:2 }} each</li>{% endfor %}</ul>
 </details>

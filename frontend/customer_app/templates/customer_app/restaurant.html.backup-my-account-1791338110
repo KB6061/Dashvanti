@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="restaurant-detail">
+
+  <div class="restaurant-banner"><span class="store-brand">{% if photo_urls %}<img src="{{ photo_urls.0 }}" alt="{{ restaurant.name }} logo">{% else %}{{ restaurant.name|first }}{% endif %}</span>{% if banner_url %}<img src="{{ banner_url }}" alt="{{ restaurant.name }}" fetchpriority="high">{% else %}<h1>{{ restaurant.name }}</h1>{% endif %}</div>
+  <header class="restaurant-title-search"><h1>{{ restaurant.name }}</h1><label><span class="visually-hidden">Search this restaurant menu</span><input type="search" data-restaurant-menu-search placeholder="Search {{ restaurant.name }}" autocomplete="off"></label></header>
+  <div class="restaurant-store-layout">
+  <aside class="restaurant-store-info">
+    <h2>Store Info</h2>
+    <p>{% if restaurant.is_open %}<strong class="restaurant-open">Open now</strong>{% else %}Closed{% endif %}</p>
+    <p>&#9733; {{ rating }}</p><p>{{ restaurant.cuisine }}</p>
+    <p>{{ restaurant.description }}</p>
+    <button type="button" data-store-more>See more</button>
+    <hr><h3>Full Menu</h3><p>{{ opening_label }} – {{ closing_label }}</p>
+    <nav><button type="button" data-menu-section="restaurant-featured">Featured Items</button><button type="button" data-menu-section="store-reviews">Reviews</button>{% for group in menu_groups %}<button type="button" data-menu-section="menu-category-{{ forloop.counter }}">{{ group.name }}</button>{% endfor %}</nav>
+  </aside>
+  <div class="restaurant-store-menu">
+  <section class="store-ordering" aria-label="Order options">
+    <div class="store-mode"><button type="button" data-header-mode="delivery" aria-pressed="true">Delivery</button><button type="button" data-header-mode="pickup" aria-pressed="false">Pickup</button></div>
+    <button type="button" class="store-pricing" data-store-pricing>Pricing &amp; fees <span>Calculated at checkout</span></button>
+    <div class="store-time">{% if restaurant.delivery_minutes %}<strong>{{ restaurant.delivery_minutes }} min</strong><span>Estimated delivery</span>{% else %}<span>Delivery time at checkout</span>{% endif %}</div>
+  </section>
+  <section class="store-deals">
+    <header><h2>Deals &amp; benefits</h2><div><button type="button" data-deals-all>See All</button><button type="button" data-deals-arrow="-1" aria-label="Previous offers">&#8249;</button><button type="button" data-deals-arrow="1" aria-label="Next offers">&#8250;</button></div></header>
+    <div class="store-deals-rail">{% for offer in promotions %}<details class="store-offer"><summary><strong>{{ offer.title }}</strong><span>{{ offer.percent }}% off · Min. &#36;{{ offer.minimum|floatformat:2 }}</span></summary><p>{{ offer.description }}</p><p>Code: <strong>{{ offer.code }}</strong>{% if offer.cap %} · Up to &#36;{{ offer.cap|floatformat:2 }}{% endif %}{% if offer.first_order_only %} · First order only{% endif %}</p></details>{% empty %}<p class="store-no-deals">No active offers right now.</p>{% endfor %}</div>
+  </section>
+  <section id="restaurant-featured" class="store-featured">
+    <header><h2>Featured Items</h2><div><button type="button" data-featured-arrow="-1" aria-label="Previous featured items">&#8249;</button><button type="button" data-featured-arrow="1" aria-label="Next featured items">&#8250;</button></div></header>
+    <div class="store-featured-rail">{% for item in menu|slice:":8" %}{% include "customer_app/menu_card.html" %}{% empty %}<p>No menu items available yet.</p>{% endfor %}</div>
+  </section>
+  <section class="store-review-section">  <h2 id="store-reviews" class="mt-4">Customer reviews</h2>
+  {% for review in reviews %}
+  <blockquote class="card">
+    {{ review.text }}
+    {% for photo in review.photo_urls %}
+    <img src="{{ photo }}" alt="Customer review photo" loading="lazy" class="menu-photo">
+    {% endfor %}
+  </blockquote>
+  {% empty %}
+  <p>Be the first to leave a review.</p>
+  {% endfor %}</section>
+  <p data-menu-search-empty hidden>No menu items match your search.</p>
+  <div class="restaurant-menu-catalog">
+    {% for group in menu_groups %}
+    <section class="menu-category" id="menu-category-{{ forloop.counter }}">
+      <div class="menu-category-head"><h2>{{ group.name }}</h2><div><button type="button" data-category-arrow="-1" aria-label="Previous {{ group.name }} items">&#8249;</button><button type="button" data-category-arrow="1" aria-label="Next {{ group.name }} items">&#8250;</button></div></div>
+      <div class="store-featured-rail restaurant-category-rail">
+        {% for item in group.items %}
+        {% include "customer_app/menu_card.html" %}
+        {% endfor %}
+      </div>
+    </section>
+    {% empty %}
+    {% if not menu %}<p class="restaurant-menu-empty">No available menu items.</p>{% endif %}
+    {% endfor %}
+  </div>
+
+  </div></div>
+
+</section>
+
+<dialog class="store-info-popup is-hidden" aria-labelledby="store-info-title">
+  <button type="button" class="store-info-close" aria-label="Close restaurant information">&times;</button>
+  <h2 id="store-info-title">{{ restaurant.name }}</h2>
+  {% if restaurant.address %}<div id="store-info-map" data-google-map data-map-address="{{ restaurant.address }}" data-map-title="{{ restaurant.name }}"></div><p data-map-status role="status"></p>{% endif %}
+  <p><strong>{{ restaurant.address|default:'Address not provided' }}</strong></p>
+  <p>{% if restaurant.is_open %}<strong class="restaurant-open">Open now</strong>{% else %}Closed{% endif %} · {{ opening_label }} – {{ closing_label }}</p>
+  <p>{{ restaurant.cuisine }}</p><p>{{ restaurant.description }}</p>
+  {% if phone %}<p><a href="tel:{{ phone }}">{{ phone }}</a></p>{% endif %}
+  <button type="button" data-store-close>Close</button>
+</dialog>
+{% endblock %}

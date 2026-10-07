@@ -58,7 +58,7 @@ def dashboard(request):
         if row.get('restaurant_address'):
             map_markers.append({'id': f"pickup-{row['id']}", 'name': f"Pickup: {row.get('restaurant_name', 'Restaurant')}", 'address': row['restaurant_address']})
         if row.get('address') and row['address'] != 'Pickup at restaurant':
-            map_markers.append({'id': f"dropoff-{row['id']}", 'name': f"Drop-off: Order #{row['id']}", 'address': row['address']})
+            map_markers.append({'id': f"dropoff-{row['id']}", 'name': f"Drop-off: Order -{row['id']}", 'address': row['address']})
     context = {
         'form': form,
         'me': me,

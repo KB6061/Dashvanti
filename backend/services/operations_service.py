@@ -18,6 +18,10 @@ def audit(db, actor_id, action, target, details='-'):
 
 def notify(db, user_id, kind, body, order_id=None):
     if user_id:
+        from backend.customer_account_models import CustomerNotificationSettings
+        preferences = db.get(CustomerNotificationSettings, user_id)
+        preference = 'order_updates' if kind == 'order-status' else 'delivery_alerts' if kind.startswith(('driver-', 'delivery-')) else 'promotions' if kind.startswith('promotion') else 'referral_rewards' if kind.startswith('referral') else 'system_alerts'
+        if preferences and not getattr(preferences, preference):return
         db.add(Notification(user_id=user_id, order_id=order_id, kind=kind, body=body))
 
 def _file(db, user, file_id):
@@ -195,7 +199,7 @@ def admin_update_order(db, order_id, status):
         drop(db,order.id,'Upcoming order was updated by admin.')
     db.add(DeliveryStatus(order_id=order.id, status=status))
     for user_id in {order.customer_id, order.restaurant_id, order.driver_id} - {None}:
-        notify(db, user_id, 'order-status', f'Order #{order.id} status changed to {status.replace("_", " ").title()} by admin.', order.id)
+        notify(db, user_id, 'order-status', f'Order -{order.id} status changed to {status.replace("_", " ").title()} by admin.', order.id)
     audit(db, None, 'admin-order-status-updated', f'order:{order.id}', status)
     db.flush()
     return {'id': order.id, 'status': order.status}
@@ -235,7 +239,7 @@ def send_message(db, user, order_id, data):
     recipients.update(row.id for row in db.scalars(select(User).where(User.role == 'admin')))
     sender = f'{user.role} {user.name}'
     for participant in recipients:
-        notify(db, participant, 'order-message', f'New message from {sender} for order #{order.id}.', order.id)
+        notify(db, participant, 'order-message', f'New message from {sender} for order -{order.id}.', order.id)
     audit(db, user.id, 'order-message-sent', f'order:{order.id}')
     db.flush()
     return {'id': row.id, 'body': row.body, 'created_at': row.created_at, 'order_id': order.id, 'user_id': user.id, 'user_name': user.name, 'user_role': user.role}

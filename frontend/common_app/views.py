@@ -29,6 +29,9 @@ def protected(view):
 
 @require_http_methods(['GET','POST'])
 def auth(request, role, action):
+    if role == 'customer' and action == 'register' and request.GET.get('ref'):
+        request.session['pending_referral'] = request.GET['ref'][:32]
+
     if request.method == 'GET' and action in {'login', 'register'} and request.session.get('token') and request.session.get('role') == role:
         try:
             call(request, 'GET', '/me')
@@ -56,11 +59,17 @@ def auth(request, role, action):
         data = dict(form.cleaned_data)
         if action in {'login','register'}:
             data['role'] = role
+        if role == 'customer' and action == 'register':
+            data['referral_code'] = request.session.get('pending_referral')
         if role == 'driver' and action == 'register':
             data['driver_agreement_token'] = request.session.get('driver_agreement_token')
         try:
             result = call(request,'POST','/auth/'+action,data)
             if action == 'login':
+                if result.get('two_factor_required'):
+                    request.session['account_2fa_challenge'] = result['challenge']
+                    request.session['account_2fa_provider'] = 'email'
+                    return redirect('/customer/account/verify-login')
                 request.session.pop('social_login', None)
                 request.session.pop('auth_provider', None)
                 request.session.cycle_key()
@@ -262,7 +271,7 @@ def chat(request, order_id):
         return redirect(request.path)
     return render(request, 'operations.html', {
         'mode': 'chat', 'messages': call(request, 'GET', f'/operations/orders/{order_id}/messages'),
-        'order_id': order_id, 'title': f'Order #{order_id} messages',
+        'order_id': order_id, 'title': f'Order -{order_id} messages',
     })
 
 @protected
@@ -300,7 +309,7 @@ def download_report(request, order_id=None):
         from urllib.parse import urlencode
         query = {'period': request.GET.get('period', 'monthly')}
         response = render(request, 'report_viewer.html', {
-            'title': f'Order #{order_id} bill' if order_id is not None else 'Earnings report',
+            'title': f'Order -{order_id} bill' if order_id is not None else 'Earnings report',
             'pdf_url': request.path + '?' + urlencode({**query, 'format': 'inline'}),
             'download_url': request.path + '?' + urlencode({**query, 'format': 'download'}),
         })

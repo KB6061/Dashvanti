@@ -133,7 +133,7 @@ def accept(db, user, order_id):
     if active:
         db.add(DriverUpcomingOrder(driver_id=user.id,order_id=order.id))
         db.add(DeliveryStatus(order_id=order.id,status='DRIVER_QUEUED'))
-        notify(db,user.id,'delivery-queued',f'Order #{order.id} is queued after your current delivery.',order.id)
+        notify(db,user.id,'delivery-queued',f'Order -{order.id} is queued after your current delivery.',order.id)
         notify(db,order.customer_id,'driver-queued','A delivery partner has reserved your order after their current delivery.',order.id)
         db.flush()
         return {'id':order.id,'queued':True,'current_order_id':active[0].id}

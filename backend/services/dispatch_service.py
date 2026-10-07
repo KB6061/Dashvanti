@@ -64,7 +64,7 @@ def nearby(db, order, require_recent_gps=False, allow_active=False):
 def offer(db, order, driver_id):
     existing = db.scalar(select(Notification.id).where(Notification.user_id == driver_id, Notification.order_id == order.id, Notification.kind == 'delivery-offer').limit(1))
     if not existing:
-        notify(db, driver_id, 'delivery-offer', f'Order #{order.id} is available for pickup within 10 miles.', order.id)
+        notify(db, driver_id, 'delivery-offer', f'Order -{order.id} is available for pickup within 10 miles.', order.id)
 
 def publish(db, order):
     from backend.services.driver_offer_service import ensure_offer
@@ -73,11 +73,11 @@ def publish(db, order):
 def assigned(db, order, driver_id, previous=None):
     recipients = set(db.scalars(select(Notification.user_id).where(Notification.order_id == order.id, Notification.kind == 'delivery-offer')))
     for recipient in recipients - {driver_id}:
-        notify(db, recipient, 'delivery-claimed', f'Order #{order.id} was accepted by another driver before you.', order.id)
+        notify(db, recipient, 'delivery-claimed', f'Order -{order.id} was accepted by another driver before you.', order.id)
     if previous:
-        notify(db, previous, 'delivery-reassigned', f'Order #{order.id} was reassigned by admin. Do not pick up this order.', order.id)
-    notify(db, driver_id, 'delivery-assigned', f'You are assigned to order #{order.id}.', order.id)
-    notify(db, order.restaurant_id, 'driver-assigned', f'Delivery partner assigned to order #{order.id}.', order.id)
+        notify(db, previous, 'delivery-reassigned', f'Order -{order.id} was reassigned by admin. Do not pick up this order.', order.id)
+    notify(db, driver_id, 'delivery-assigned', f'You are assigned to order -{order.id}.', order.id)
+    notify(db, order.restaurant_id, 'driver-assigned', f'Delivery partner assigned to order -{order.id}.', order.id)
 
 def reassign(db, order_id, driver_id, expected_driver_id, reason, require_recent_gps=False, admin_override=False):
     driver = db.scalar(select(Driver).where(Driver.id == driver_id).with_for_update().execution_options(populate_existing=True))

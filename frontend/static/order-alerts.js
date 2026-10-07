@@ -162,7 +162,7 @@
       row.pickup_eta_minutes!=null?'Estimated pickup: '+row.pickup_eta_minutes+' min · Delivery: '+row.delivery_eta_minutes+' min':'',
       row.estimated_earning!=null?'Estimated earning: '+row.currency+' '+row.estimated_earning:'',
       row.distance_miles!=null?'Pickup distance: '+row.distance_miles+' miles':'',
-      row.upcoming?'Upcoming request — after current order #'+row.current_order_id:''].filter(Boolean).join('\n');
+      row.upcoming?'Upcoming request — after current order -'+row.current_order_id:''].filter(Boolean).join('\n');
     const button=document.createElement('button');button.textContent='Accept';button.type='button';
     button.onclick=async()=>{
       if(acting)return;acting=true;button.disabled=true;rejectBtn.disabled=true;
@@ -173,7 +173,7 @@
        if(!res.ok)throw new Error('Order is no longer available');
        const result=res.headers.get('content-type')?.includes('application/json')?await res.json():null;
        stopAlert();
-       if(role==='driver'&&result?.queued){article.replaceChildren(text,details);text.textContent='Accepted as upcoming: order #'+row.id+'. Your current delivery continues.';window.dispatchEvent(new Event('dashvanti:queue-changed'));}
+       if(role==='driver'&&result?.queued){article.replaceChildren(text,details);text.textContent='Accepted as upcoming: order -'+row.id+'. Your current delivery continues.';window.dispatchEvent(new Event('dashvanti:queue-changed'));}
        else{article.remove();if(role==='driver')location.assign(result?.redirect_url||'/driver/order/'+row.id);}
       }catch(e){text.textContent=e.message;button.disabled=false;rejectBtn.disabled=false;}
       finally{acting=false;}

@@ -1,0 +1,3 @@
+.customer-tracking-preview .customer-preview-waiting{inset:auto 4px 22px;display:block;padding:4px 6px;border-radius:6px;background:#ffffffed;box-shadow:0 1px 5px #0002;font-size:10px;line-height:1.2;color:#52645b;z-index:2;max-width:calc(100% - 8px)}
+.customer-preview-waiting.has-live-gps{color:#087238}
+.account-sound-settings{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-bottom:1px solid #dce6d8;margin-bottom:6px}.account-sound-settings .arrival-sound-toggle{width:100%;min-height:40px;background:#edf5e9;color:#173f30;border:1px solid #d5dfda;border-radius:9px;font-size:12px}.account-sound-settings .order-sound-control{min-height:32px}.account-sound-settings button:hover{background:#dfeeda}

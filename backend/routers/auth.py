@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from backend.db import get_db
 from backend.schemas import Register, Login, Forgot, Reset
 from backend.security import current_user
@@ -11,8 +11,8 @@ def register(data: Register, db=Depends(get_db, scope='function')):
     return service.register(db, data)
 
 @router.post('/login')
-def login(data: Login, db=Depends(get_db, scope='function')):
-    return service.login(db, data)
+def login(data: Login, request: Request, db=Depends(get_db, scope='function')):
+    return service.login(db, data, request)
 
 @router.post('/forgot')
 def forgot(data: Forgot, db=Depends(get_db, scope='function')):

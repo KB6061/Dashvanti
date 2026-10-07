@@ -3,7 +3,7 @@
 {% block admin_content %}
 {% if order.status != "DELIVERED" and order.status != "CANCELLED" and order.status != "REJECTED" %}<button type="button" data-cancel-order="/admin/order/{{ order.id }}/cancellation">Cancel order / full refund override</button>{% endif %}
 <form data-no-ajax="true" method="post" style="display:flex;gap:8px;align-items:center;margin:12px 0">{% csrf_token %}<input type="hidden" name="admin_action" value="status"><select name="status">{% for value in status_options %}<option value="{{ value }}" {% if order.status == value %}selected{% endif %}>{{ value|title }}</option>{% endfor %}</select><button>Update status</button></form>
-<a href="/admin/orders">← Orders</a><h1>Order #{{ order.id }}</h1>
+<a href="/admin/orders">← Orders</a><h1>Order -{{ order.id }}</h1>
 <div class="order-table-wrap"><table class="order-data-table"><caption>Order details</caption><tbody>
 <tr><th>Status</th><td>{{ order.status|title }}</td><th>Placed</th><td><time data-order-date datetime="{{ order.created_at|date:'c' }}">{{ order.created_at }}</time></td></tr>
 <tr><th>Restaurant</th><td>{{ restaurant.name }}</td><th>Customer</th><td>{{ customer.name }} · {{ customer.phone|default:'—' }}</td></tr>
@@ -22,7 +22,7 @@
 {% for event in history %}<tr><td>{{ event.status|title }}</td><td><time data-order-date datetime="{{ event.created_at|date:'c' }}">{{ event.created_at }}</time></td></tr>{% empty %}<tr><td colspan="2">No status updates recorded.</td></tr>{% endfor %}
 </tbody></table></div>
 
-<section class="card admin-order-chat"><h2>Order chat</h2><div class="message-list">{% for message in chat_messages %}<article><strong>{{ message.user_role|title }} · {{ message.user_name }} · Order #{{ message.order_id }}</strong><p>{{ message.body }}</p><small>{{ message.created_at }}</small></article>{% empty %}<p>No messages yet.</p>{% endfor %}</div><form data-no-ajax="true" method="post">{% csrf_token %}<input type="hidden" name="admin_action" value="chat"><textarea name="body" required maxlength="2000" placeholder="Reply to customer, restaurant, or driver"></textarea><button>Send reply</button></form></section>
+<section class="card admin-order-chat"><h2>Order chat</h2><div class="message-list">{% for message in chat_messages %}<article><strong>{{ message.user_role|title }} · {{ message.user_name }} · Order -{{ message.order_id }}</strong><p>{{ message.body }}</p><small>{{ message.created_at }}</small></article>{% empty %}<p>No messages yet.</p>{% endfor %}</div><form data-no-ajax="true" method="post">{% csrf_token %}<input type="hidden" name="admin_action" value="chat"><textarea name="body" required maxlength="2000" placeholder="Reply to customer, restaurant, or driver"></textarea><button>Send reply</button></form></section>
 
 <section class="card" data-live-refresh><h2>Online drivers</h2><a href="/admin/order/{{ order.id }}">Refresh availability</a><div class="order-table-wrap"><table class="order-data-table"><thead><tr><th>Driver</th><th>Availability</th><th>GPS</th><th>Distance to pickup</th></tr></thead><tbody>
 {% for online in online_drivers %}<tr><td>{{ online.name }} · {{ online.phone|default:'—' }}</td><td>{{ online.availability }}</td><td>{{ online.gps }}</td><td>{% if online.candidate %}{{ online.candidate.distance_miles }} mi · {{ online.candidate.drive_minutes }} min{% if forloop.first %} · Nearest{% endif %}{% else %}Not eligible for this pickup{% endif %}</td></tr>{% empty %}<tr><td colspan="4">No drivers online.</td></tr>{% endfor %}

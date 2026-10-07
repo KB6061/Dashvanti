@@ -770,7 +770,7 @@ if (checkoutPage && checkoutForm) {
   const submitButton = checkoutForm.querySelector('[data-checkout-submit]');
   let quoteRequest = 0;
 
-  const checkoutMoney = (value) => (checkoutForm.dataset.currency === 'INR' ? '₹' : '$') + Number(value || 0).toFixed(2);
+  const checkoutMoney = (value) => new Intl.NumberFormat(undefined, {style: 'currency', currency: checkoutForm.dataset.currency || 'USD'}).format(Number(value || 0));
   const checkoutCsrf = () => checkoutForm.querySelector('[name="csrfmiddlewaretoken"]')?.value || '';
   const selectedDeliveryAddress = () => addressSelect?.selectedOptions?.[0]?.dataset.address || '';
 
@@ -797,6 +797,20 @@ if (checkoutPage && checkoutForm) {
   }
 
   function renderCheckoutQuote(quote) {
+    if (quote.currency) checkoutForm.dataset.currency = quote.currency;
+    const details = checkoutForm.querySelector('[data-checkout-fee-details]');
+    if (details) {
+      details.replaceChildren();
+      (quote.groups || []).forEach(group => {
+        const fee = group.fee_breakdown;
+        if (!fee) return;
+        const heading = document.createElement('strong'); heading.textContent = group.restaurant_name; details.append(heading);
+        const distance = document.createElement('p'); distance.textContent = `${Number(fee.distance_unit === 'km' ? fee.distance_km : fee.distance_miles).toFixed(2)} ${fee.distance_unit}${fee.distance_source === 'straight_line_estimate' ? ' · Estimated distance' : ''}`; details.append(distance);
+        [['Base fee', fee.base_fee], ['Distance fee', fee.distance_fee], ['Small order fee', fee.small_order_fee], ['Surge fee', fee.surge_fee], ['Free delivery saving', -Number(fee.delivery_discount)]].forEach(([label, amount]) => {
+          const line = document.createElement('p'); line.textContent = `${label}: ${checkoutMoney(amount)}`; details.append(line);
+        });
+      });
+    }
     const values = {
       '[data-checkout-subtotal]': quote.subtotal,
       '[data-checkout-tax]': quote.tax,
@@ -819,6 +833,7 @@ if (checkoutPage && checkoutForm) {
     const body = new FormData();
     body.set('csrfmiddlewaretoken', checkoutCsrf());
     body.set('mode', modeInput.value);
+    body.set('address_id', addressSelect?.value || '');
     body.set('promo_code', promoInput?.value.trim() || '');
     body.set('tip', checkoutForm.querySelector('[name=tip]').value || '0');
     if (quoteStatus) quoteStatus.textContent = 'Updating total…';
@@ -832,11 +847,12 @@ if (checkoutPage && checkoutForm) {
       const data = await response.json();
       if (requestId !== quoteRequest) return;
       if (!response.ok) throw new Error(data.detail || 'Promotion is unavailable');
+      if (quoteStatus) quoteStatus.classList.remove('portal-error');
       renderCheckoutQuote(data);
       if (quoteStatus) quoteStatus.textContent = promoInput?.value.trim() ? 'Promotion applied' : 'Total updated';
     } catch (error) {
       if (requestId !== quoteRequest) return;
-      if (quoteStatus) quoteStatus.textContent = error.message;
+      if (quoteStatus) { quoteStatus.textContent = error.message; quoteStatus.classList.add('portal-error'); }
     }
   }
 
@@ -868,6 +884,7 @@ if (checkoutPage && checkoutForm) {
   modeToggle?.addEventListener('click', () => setCheckoutMode(modeToggle.dataset.mode, true));
   addressSelect?.addEventListener('change', () => {
     updateCheckoutMap('delivery');
+    refreshCheckoutQuote();
     if (checkoutStatus) checkoutStatus.textContent = addressSelect.value ? 'Delivery address selected' : 'Choose a delivery address';
   });
   checkoutForm.querySelector('[data-checkout-promo-apply]')?.addEventListener('click', refreshCheckoutQuote);

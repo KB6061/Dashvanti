@@ -70,7 +70,7 @@
             </summary>
             <div class="checkout-item-list">
               {% for item in group.items %}
-              <div><span>{{ item.quantity }} × {{ item.name }}</span><strong>{% if checkout_currency == 'INR' %}₹{% else %}${% endif %}{{ item.subtotal }}</strong></div>
+              <div><span>{{ item.quantity }} × {{ item.name }}</span><strong>{{ checkout_symbol }}{{ item.subtotal }}</strong></div>
               {% endfor %}
             </div>
           </details>
@@ -92,7 +92,7 @@
           <label><input type="radio" name="payment_mode" value="Cash" checked> Cash on delivery / pickup</label>
           <label data-phonepe-option hidden><input type="radio" name="payment_mode" value="PhonePe" disabled> PhonePe / UPI <small>Secure payment in INR</small></label>
           <p data-phonepe-error role="status" aria-live="polite"></p>
-          <div><span class="checkout-payment-mark" aria-hidden="true">{% if checkout_currency == 'INR' %}₹{% else %}${% endif %}</span><span><strong data-checkout-payment-label>Cash on {% if checkout_mode == 'pickup' %}pickup{% else %}delivery{% endif %}</strong><small>Pay when your order is received</small></span><span class="checkout-selected-radio" aria-label="Selected"></span></div>
+          <div><span class="checkout-payment-mark" aria-hidden="true">{{ checkout_symbol }}</span><span><strong data-checkout-payment-label>Cash on {% if checkout_mode == 'pickup' %}pickup{% else %}delivery{% endif %}</strong><small>Pay when your order is received</small></span><span class="checkout-selected-radio" aria-label="Selected"></span></div>
         </section>
       </div>
 
@@ -108,25 +108,26 @@
         <ul class="checkout-restaurant-list">{% for group in cart.groups %}<li>{{ group.restaurant_name }} · {{ group.item_count }} item{{ group.item_count|pluralize }}</li>{% endfor %}</ul>
         {% endif %}
         <div class="checkout-price-list">
-          <span>Subtotal</span><strong data-checkout-subtotal>{% if checkout_currency == 'INR' %}₹{% else %}${% endif %}{{ quote.subtotal }}</strong>
-          <span>Estimated tax</span><strong data-checkout-tax>{% if checkout_currency == 'INR' %}₹{% else %}${% endif %}{{ quote.tax }}</strong>
-          <span>Service fee</span><strong data-checkout-service-fee>{% if checkout_currency == 'INR' %}₹{% else %}${% endif %}{{ quote.service_fee }}</strong>
-          <span>Delivery fee</span><strong data-checkout-delivery-fee>{% if checkout_currency == 'INR' %}₹{% else %}${% endif %}{{ quote.delivery_fee }}</strong>
-          <span>Discount</span><strong data-checkout-discount>−{% if checkout_currency == 'INR' %}₹{% else %}${% endif %}{{ quote.discount }}</strong>
+          <span>Subtotal</span><strong data-checkout-subtotal>{{ checkout_symbol }}{{ quote.subtotal }}</strong>
+          <span>Estimated tax</span><strong data-checkout-tax>{{ checkout_symbol }}{{ quote.tax }}</strong>
+          <span>Service fee</span><strong data-checkout-service-fee>{{ checkout_symbol }}{{ quote.service_fee }}</strong>
+          <span>Delivery fee</span><strong data-checkout-delivery-fee>{{ checkout_symbol }}{{ quote.delivery_fee }}</strong>
+          <span>Discount</span><strong data-checkout-discount>−{{ checkout_symbol }}{{ quote.discount }}</strong>
         </div>
+        <details><summary>Delivery fee breakdown</summary><div data-checkout-fee-details></div><small>Free delivery waives base and distance fees. Active surcharges remain applicable.</small></details>
         <section class="checkout-tip" data-tip-panel>
 <h2>Delivery Partner Tip</h2><p>Your single tip makes happy on face :)</p>
 <div class="tip-options" role="group" aria-label="Choose a tip">
 <button type="button" data-tip-value="0" aria-pressed="true">No tip</button>
-<button type="button" data-tip-value="1.50" aria-pressed="false">{% if checkout_currency == 'INR' %}₹{% else %}${% endif %}1.50</button>
-<button type="button" data-tip-value="2.00" aria-pressed="false">{% if checkout_currency == 'INR' %}₹{% else %}${% endif %}2.00</button>
-<button type="button" data-tip-value="2.50" aria-pressed="false">{% if checkout_currency == 'INR' %}₹{% else %}${% endif %}2.50</button>
+<button type="button" data-tip-value="1.50" aria-pressed="false">{{ checkout_symbol }}1.50</button>
+<button type="button" data-tip-value="2.00" aria-pressed="false">{{ checkout_symbol }}2.00</button>
+<button type="button" data-tip-value="2.50" aria-pressed="false">{{ checkout_symbol }}2.50</button>
 <button type="button" data-tip-other aria-pressed="false">Other</button></div>
-<label data-tip-custom hidden>Custom tip (USD)<input type="number" name="tip" value="0" min="0" max="1000" step=".01" data-tip-input></label>
+<label data-tip-custom hidden>Custom tip ({{ checkout_currency }})<input type="number" name="tip" value="0" min="0" max="1000" step=".01" data-tip-input></label>
 </section>
-<div class="checkout-price-list"><span>Tip</span><strong data-checkout-tip>{% if checkout_currency == 'INR' %}₹{% else %}${% endif %}0.00</strong></div>
-        <div class="checkout-total"><span>Total</span><strong data-checkout-total>{% if checkout_currency == 'INR' %}₹{% else %}${% endif %}{{ quote.total }}</strong></div>
-        <button type="submit" class="checkout-place-order" data-checkout-submit>Place order <span data-checkout-button-total>{% if checkout_currency == 'INR' %}₹{% else %}${% endif %}{{ quote.total }}</span></button>
+<div class="checkout-price-list"><span>Tip</span><strong data-checkout-tip>{{ checkout_symbol }}0.00</strong></div>
+        <div class="checkout-total"><span>Total</span><strong data-checkout-total>{{ checkout_symbol }}{{ quote.total }}</strong></div>
+        <button type="submit" class="checkout-place-order" data-checkout-submit>Place order <span data-checkout-button-total>{{ checkout_symbol }}{{ quote.total }}</span></button>
       </aside>
     </div>
   </form>

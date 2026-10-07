@@ -6,6 +6,7 @@ from pydantic import BaseModel, EmailStr, Field, AliasChoices
 Role = Literal['customer', 'restaurant', 'driver']
 
 class Register(BaseModel):
+    referral_code: str | None = Field(default=None, max_length=32)
     driver_agreement_token: str | None = Field(default=None, min_length=20, max_length=200)
     latitude: float | None = Field(default=None,ge=-90,le=90,allow_inf_nan=False)
     longitude: float | None = Field(default=None,ge=-180,le=180,allow_inf_nan=False)
@@ -90,6 +91,7 @@ class CustomerLocationInput(BaseModel):
     address: str | None = Field(default=None, max_length=500)
 
 class CheckoutQuote(BaseModel):
+    address_id: int | None = Field(default=None, gt=0)
     tip: Decimal = Field(default=Decimal("0"), ge=0, le=1000, decimal_places=2)
     mode: Literal['delivery', 'pickup']
     promo_code: str | None = Field(default=None, max_length=40)
@@ -97,7 +99,6 @@ class CheckoutQuote(BaseModel):
 
 class Checkout(CheckoutQuote):
     payment_mode: Literal['Cash', 'PhonePe'] = 'Cash'
-    address_id: int | None = None
     request_key: str = Field(min_length=16, max_length=64)
 
 class Transition(BaseModel):

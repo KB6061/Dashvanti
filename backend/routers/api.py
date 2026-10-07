@@ -202,6 +202,11 @@ def checkout_eta(address_id: int | None = None, mode: str = 'delivery', user=Dep
 @router.post('/addresses/select')
 def select_address(data: AddressSelection, user=Depends(customer), db=Depends(get_db, scope='function')):
     address = user_service.save_address(db, user, AddressInput(**data.model_dump()), data.id)
+    if address.latitude is None or address.longitude is None:
+        address.latitude, address.longitude = data.latitude, data.longitude
+    if not address.country:
+        from backend.services.geo_service import normalize_country
+        address.country = normalize_country(data.country)
     user_service.save_current_location(db, user, CustomerLocationInput(latitude=data.latitude, longitude=data.longitude, address=data.details, country=data.country))
     return address
 

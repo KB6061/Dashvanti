@@ -31,7 +31,7 @@
   <div class="panel-head"><h2>Live delivery status</h2><a href="/driver/orders">View order history</a></div>
   {% for order in active_orders %}
     <article class="driver-job-card active" data-live-order-id="{{ order.id }}">
-      <strong>Order #{{ order.id }}</strong>
+      <strong>Order -{{ order.id }}</strong>
       <p><b>Pickup</b> {{ order.restaurant_name }}</p>
       <p><b>Drop-off</b> {{ order.address }}</p>
       <small><span data-order-status="{{ order.id }}" data-status="{{ order.status }}" aria-live="polite">{{ order.status|title }}</span> &middot; ${{ order.delivery_fee }}</small>
@@ -54,7 +54,7 @@
   <div class="panel-head"><h2>Upcoming delivery</h2><small>Starts after your current delivery</small></div>
   {% for order in queued %}
   <article class="driver-job-card" data-live-order-id="{{ order.id }}">
-    <strong>Queued order #{{ order.id }}</strong>
+    <strong>Queued order -{{ order.id }}</strong>
     <p><b>Restaurant:</b> {{ order.restaurant_name }} · {{ order.restaurant_address }}</p>
     <p><b>Delivery address:</b> {{ order.address }}</p>
     <p>Estimated pickup: {{ order.pickup_eta_minutes }} min · Delivery: {{ order.delivery_eta_minutes }} min</p>
@@ -66,10 +66,10 @@
   <div class="panel-head"><h2>Order requests <span>{{ available|length }}</span></h2><small>Unassigned deliveries · updates automatically</small></div>
   {% for order in available %}
     <article class="driver-job-card" data-live-order-id="{{ order.id }}">
-      <strong>Order request #{{ order.id }}</strong>
+      <strong>Order request -{{ order.id }}</strong>
       <p><b>Restaurant:</b> {{ order.restaurant_name }}</p>
       <p><b>Delivery Address:</b> {{ order.address }}</p>
-      <p>Estimated pickup: {{ order.pickup_eta_minutes }} min · Delivery: {{ order.delivery_eta_minutes }} min{% if order.upcoming %} · After order #{{ order.current_order_id }}{% endif %}</p>
+      <p>Estimated pickup: {{ order.pickup_eta_minutes }} min · Delivery: {{ order.delivery_eta_minutes }} min{% if order.upcoming %} · After order -{{ order.current_order_id }}{% endif %}</p>
       {% for item in order.items %}<small>{{ item.quantity }} × {{ item.name }}</small>{% endfor %}
       <small>Earn ${{ order.delivery_fee }}</small>
       <div style="display:flex; gap:8px; margin-top:8px;">

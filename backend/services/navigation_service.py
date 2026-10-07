@@ -50,37 +50,29 @@ def fallback_route(origin_lat, origin_lng, dest_lat, dest_lng, stage='customer')
     speed_mps = 7.0
     eta_seconds = max(180, int(driving_dist_meters / speed_mps))
 
-    # Generate 5-point path for route line visualization
-    points = [
-        (origin_lat, origin_lng),
-        (origin_lat + (dest_lat - origin_lat) * 0.25, origin_lng + (dest_lng - origin_lng) * 0.1),
-        (origin_lat + (dest_lat - origin_lat) * 0.50, origin_lng + (dest_lng - origin_lng) * 0.5),
-        (origin_lat + (dest_lat - origin_lat) * 0.75, origin_lng + (dest_lng - origin_lng) * 0.9),
-        (dest_lat, dest_lng)
-    ]
+    points = [(origin_lat, origin_lng), (dest_lat, dest_lng)]
 
     return {
         'eta_seconds': eta_seconds,
         'distance_meters': int(driving_dist_meters),
         'active_eta_seconds': eta_seconds,
         'active_distance_meters': int(driving_dist_meters),
-        'restaurant_location': {'lat': origin_lat, 'lng': origin_lng} if stage == 'restaurant' else None,
-        'customer_location': {'lat': dest_lat, 'lng': dest_lng},
+        'restaurant_location': {'lat': dest_lat, 'lng': dest_lng} if stage == 'restaurant' else None,
+        'customer_location': {'lat': dest_lat, 'lng': dest_lng} if stage == 'customer' else None,
         'polyline': encode_polyline(points),
         'stage': stage,
-        'fallback': True
+        'fallback': True,
+        'estimated': True,
+        'distance_source': 'straight_line_estimate'
     }
 
-def route(order, restaurant, location, status):
+def route(order, restaurant, location, status, db=None):
     if order.mode != 'delivery' or status in {'DELIVERED', 'CANCELLED', 'CANCELED', 'REJECTED'}:
         return None
 
-    # Default fallback coordinates for New York region if coordinates missing
-    default_lat, default_lng = 40.7128, -74.0060
-    origin_lat = location.get('latitude', default_lat) if location else default_lat
-    origin_lng = location.get('longitude', default_lng) if location else default_lng
-    dest_lat = 40.7306
-    dest_lng = -73.9352
+    if not location:
+        return None
+    origin_lat, origin_lng = location['latitude'], location['longitude']
 
     key = (order.id, order.driver_id, status, restaurant.address, order.address, origin_lat, origin_lng)
     with _lock:
@@ -125,9 +117,26 @@ def route(order, restaurant, location, status):
         except Exception:
             result = None
 
-    # If Google Maps API is disabled or fails, use engineered fallback route
     if not result:
-        result = fallback_route(origin_lat, origin_lng, dest_lat, dest_lng, stage=stage)
+        if after_pickup:
+            destination = None
+            if db is not None:
+                from sqlalchemy import select
+                from backend.models import Address
+                address = db.scalar(select(Address).where(Address.customer_id == order.customer_id, Address.details == order.address).order_by(Address.id.desc()).limit(1))
+                if address and address.latitude is not None and address.longitude is not None:
+                    destination = {'latitude': address.latitude, 'longitude': address.longitude}
+            if destination is None:
+                from backend.services.restaurant_location_service import geocode
+                destination = geocode(address=order.address)
+        else:
+            destination = {'latitude': restaurant.latitude, 'longitude': restaurant.longitude} if restaurant.latitude is not None and restaurant.longitude is not None else None
+            if destination is None:
+                from backend.services.restaurant_location_service import geocode
+                destination = geocode(address=restaurant.address)
+        if destination is None:
+            return None
+        result = fallback_route(origin_lat, origin_lng, destination['latitude'], destination['longitude'], stage=stage)
 
     with _lock:
         if len(_cache) >= 500:

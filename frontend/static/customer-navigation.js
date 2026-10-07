@@ -30,7 +30,7 @@
  function showOrder(area,data){
   area.replaceChildren();
   const table=document.createElement('table');table.className='order-data-table';
-  const values=[['Order','#'+data.order_id],['Restaurant',data.restaurant.name],['Restaurant activity',label(data.restaurant_status)],['Driver status',label(data.driver_status)||'Waiting for assignment'],['Delivery address',data.destination]];
+  const values=[['Order','-'+data.order_id],['Restaurant',data.restaurant.name],['Restaurant activity',label(data.restaurant_status)],['Driver status',label(data.driver_status)||'Waiting for assignment'],['Delivery address',data.destination]];
   for(const [name,value] of values){const tr=document.createElement('tr'),th=document.createElement('th'),td=document.createElement('td');th.textContent=name;td.textContent=value;tr.append(th,td);table.append(tr);}
   area.append(table);
   const link=document.createElement('a');link.href='/customer/order/'+data.order_id+'/track';link.textContent='Open live tracking';area.append(link);

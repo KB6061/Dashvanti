@@ -19,6 +19,6 @@
   if (!sidebar.contains(event.target) && !button.contains(event.target)) setOpen(false);
  });
  items.addEventListener('click', event => {
-  if (event.target.closest('a, [data-account-open]')) setOpen(false);
+  if (event.target.closest('a, [data-account-open], [data-logout-open]')) setOpen(false);
  });
 })();

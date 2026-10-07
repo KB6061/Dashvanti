@@ -43,6 +43,11 @@ class WebSocketManager:
         for role in ('customer','restaurant','driver'):
             recipients=recipients | getattr(self,role+'s').get(data.get(role+'_id'),set())
         await self.deliver(recipients,data)
+        if data.get('driver_id') and data.get('activity_status') in {'DRIVER_ASSIGNED', 'DRIVER_REASSIGNED', 'DELIVERY_ASSIGNED'}:
+            from backend.services.assignment_tracking_service import assignment_location
+            location = await asyncio.to_thread(assignment_location, data['order_id'], data['driver_id'])
+            if location:
+                await self.push(location)
 
     def owned_subscribers(self,data):
         return {peer for peer in self.orders.get(data.get('order_id'),set()) if str(data.get(peer.claims.get('role','customer')+'_id'))==peer.claims['sub']}

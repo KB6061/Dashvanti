@@ -100,7 +100,7 @@ def cancel(db,user,order_id,data,admin=False):
     db.add(DeliveryStatus(order_id=order.id,status='CANCELLED'))
     audit(db,actor,'order-cancelled',f'order:{order.id}',json.dumps(result))
     for recipient in {order.customer_id,order.restaurant_id,driver_id}-{None}:
-        notify(db,recipient,'order-cancelled',f'Order #{order.id} cancelled. Refund request: '+result['refund']+' USD.',order.id)
+        notify(db,recipient,'order-cancelled',f'Order -{order.id} cancelled. Refund request: '+result['refund']+' USD.',order.id)
     db.flush()
     if actor is not None:
         flag_repeated(db,actor,role,order)

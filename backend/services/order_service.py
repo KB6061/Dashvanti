@@ -8,6 +8,7 @@ from sqlalchemy import select, delete, func
 from backend.models import User, CartItem, MenuItem, Restaurant, Driver, Address, Order, OrderItem, DeliveryStatus, Rating, Review, Promotion, RestaurantPresentation
 from backend.services.kafka_event_service import emit
 from backend.services.fund_service import calculate
+from backend.delivery_fee_models import OrderDeliveryFeeSnapshot
 
 TAX_RATE = Decimal('0.00')
 DISCOUNT = Decimal('0.00')
@@ -102,7 +103,17 @@ def cart(db, user):
         group['items'].append(item)
         group['item_count'] += c.quantity
         group['subtotal'] += item['subtotal']
-    return {'items': items, 'groups': list(groups.values()), **calculate(db, subtotal, 'pickup')}
+    return {'items': items, 'groups': list(groups.values()), 'subtotal': subtotal, 'tax': Decimal('0.00'),
+        'service_fee': Decimal('0.00'), 'delivery_fee': Decimal('0.00'), 'discount': Decimal('0.00'), 'total': subtotal}
+
+
+def priced_totals(db, user, restaurant, subtotal, data, discount=Decimal('0')):
+    from backend.services import delivery_fee_service
+    legacy = calculate(db, subtotal, data.mode, discount)
+    fee = delivery_fee_service.quote(db, user, restaurant, subtotal, data.mode, data.address_id, legacy['discount'], legacy['tax'])
+    return {'subtotal': subtotal, 'tax': legacy['tax'], 'service_fee': fee['service_fee'],
+        'delivery_fee': fee['total_delivery_fee'], 'discount': fee['discount'], 'total': fee['grand_total'],
+        'fee_breakdown': fee, **delivery_fee_service.public(fee)}
 
 
 def checkout_quote(db, user, data):
@@ -126,9 +137,11 @@ def checkout_quote(db, user, data):
             group['subtotal'],
             has_prior_order,
         )
-        calculated = calculate(db, group['subtotal'], data.mode, group_discount)
+        restaurant = db.get(Restaurant, group['restaurant_id'])
+        calculated = priced_totals(db, user, restaurant, group['subtotal'], data, group_discount)
         calculated['tip'] = tips[group['restaurant_id']]
         calculated['total'] += calculated['tip']
+        calculated['grandTotal'] = calculated['total']
         groups.append({
             'restaurant_id': group['restaurant_id'],
             'restaurant_name': group['restaurant_name'],
@@ -142,7 +155,12 @@ def checkout_quote(db, user, data):
         delivery_fee += calculated['delivery_fee']
         discount += calculated['discount']
         total += calculated['total']
+    if len({group['currency'] for group in groups}) > 1:
+        raise HTTPException(409, 'Place separate orders for restaurants using different currencies')
     return {
+        'currency': groups[0]['currency'] if groups else None,
+        'symbol': groups[0]['symbol'] if groups else None,
+        'foodTotal': subtotal, 'deliveryFee': delivery_fee, 'serviceFee': service_fee, 'grandTotal': total,
         'mode': data.mode,
         'tip': sum(tips.values(), Decimal('0')),
         'groups': groups,
@@ -226,12 +244,15 @@ def checkout(db, user, data):
     for restaurant_id, group in grouped.items():
         subtotal = sum((m.price*c.quantity for c,m in group['rows']), Decimal('0.00'))
         discount = promotion_discount(db, user, data.promo_code, subtotal, has_prior_order)
-        calculated = calculate(db, subtotal, data.mode, discount)
+        calculated = priced_totals(db, user, group['restaurant'], subtotal, data, discount)
         calculated['total'] += tips[restaurant_id]
         scheduled_for = selected_time(db, user, restaurant_id)
         order = Order(currency=group['restaurant'].currency, payment_mode=data.payment_mode, status='SCHEDULED' if scheduled_for else ('PAYMENT_PENDING' if data.payment_mode == 'PhonePe' else 'PLACED'), tip=tips[restaurant_id], customer_id=user.id, restaurant_id=restaurant_id, request_key=f'{base_key}:{restaurant_id}', mode=data.mode, address=address, total=calculated['total'], subtotal=calculated['subtotal'], tax=calculated['tax'], service_fee=calculated['service_fee'], delivery_fee=calculated['delivery_fee'], discount=calculated['discount'])
         db.add(order)
         db.flush()
+        from backend.services.delivery_fee_service import snapshot as fee_snapshot
+        order.grand_total = order.total
+        fee_snapshot(db, order, calculated['fee_breakdown'])
         if scheduled_for:
             from backend.restaurant_experience_models import ScheduledOrder
             db.add(ScheduledOrder(order_id=order.id, release_at=scheduled_for))
@@ -280,7 +301,9 @@ def listing(db, user):
         restaurant = db.get(Restaurant, order.restaurant_id)
         customer = db.get(User, order.customer_id)
         driver = db.get(User, order.driver_id) if order.driver_id else None
+        from backend.services.customer_queue_tracking_service import state
         result.append({
+            'queue': state(db, order) if user.role == 'customer' else None,
             'items': order_items.get(order.id, []),
             'item_count': sum(item['quantity'] for item in order_items.get(order.id, [])),
             'id': order.id,
@@ -314,6 +337,7 @@ def detail(db, user, order_id):
         'customer': {'name': customer.name, 'phone': customer.phone} if customer else None,
         'order': order,
         'items': list(db.scalars(select(OrderItem).where(OrderItem.order_id == order.id))),
+        'fee_breakdown': db.get(OrderDeliveryFeeSnapshot, order.id),
         'history': list(db.scalars(select(DeliveryStatus).where(DeliveryStatus.order_id == order.id).order_by(DeliveryStatus.id))),
         'driver': {'name':driver.name, 'phone':driver.phone, 'vehicle_type': driver_profile.vehicle_type if driver_profile else '', 'vehicle_number': driver_profile.vehicle_number if driver_profile else ''} if driver else None
     }

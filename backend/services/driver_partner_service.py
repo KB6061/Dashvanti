@@ -280,7 +280,7 @@ def earning(db, order):
     if not wallet:
         wallet = DriverWallet(driver_id=order.driver_id, currency=order.currency, balance=0); db.add(wallet)
     wallet.balance += total
-    notice(db, order.driver_id, 'ORDER_COMPLETED', f'Order #{order.id} completed. Earnings: {order.currency} {total}.')
+    notice(db, order.driver_id, 'ORDER_COMPLETED', f'Order -{order.id} completed. Earnings: {order.currency} {total}.')
 
 
 def payable_orders(db, driver_id, currency, lock=False):

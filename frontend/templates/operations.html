@@ -4,14 +4,14 @@
   {% if mode == 'support' %}
   <div class="intro"><div><p class="eyebrow">HELP CENTER</p><h1>Support tickets</h1><p>Send a request to Dashvanti support. Your order details stay linked to the ticket.</p></div></div>
   <form method="post" class="form-card operations-form">{% csrf_token %}
-    <label>Related order <select name="order_id"><option value="">General question</option>{% for order in orders %}<option value="{{ order.id }}">Order #{{ order.id }} · {{ order.status }}</option>{% endfor %}</select></label>
+    <label>Related order <select name="order_id"><option value="">General question</option>{% for order in orders %}<option value="{{ order.id }}">Order -{{ order.id }} · {{ order.status }}</option>{% endfor %}</select></label>
     <label>Subject <input required name="subject" minlength="3" maxlength="120"></label>
     <label>What happened? <textarea required name="description" minlength="5" maxlength="2000"></textarea></label>
     <button>Send request</button>
   </form>
-  <div class="ticket-list">{% for ticket in tickets %}<article><div><strong>{{ ticket.subject }}</strong><span class="ticket-status {{ ticket.status }}">{{ ticket.status }}</span></div><p>{{ ticket.description }}</p>{% if ticket.resolution %}<p class="resolution">Support: {{ ticket.resolution }}</p>{% endif %}<small>{% if ticket.order_id %}Order #{{ ticket.order_id }} · {% endif %}{{ ticket.created_at }}</small></article>{% empty %}<p class="empty-copy">No support tickets yet.</p>{% endfor %}</div>
+  <div class="ticket-list">{% for ticket in tickets %}<article><div><strong>{{ ticket.subject }}</strong><span class="ticket-status {{ ticket.status }}">{{ ticket.status }}</span></div><p>{{ ticket.description }}</p>{% if ticket.resolution %}<p class="resolution">Support: {{ ticket.resolution }}</p>{% endif %}<small>{% if ticket.order_id %}Order -{{ ticket.order_id }} · {% endif %}{{ ticket.created_at }}</small></article>{% empty %}<p class="empty-copy">No support tickets yet.</p>{% endfor %}</div>
   {% elif mode == 'chat' %}
-  <div class="intro"><div><p class="eyebrow">ORDER CHAT</p><h1>Order #{{ order_id }}</h1><p>Messages are saved and visible only to this order’s customer, restaurant, and assigned driver.</p></div></div>
+  <div class="intro"><div><p class="eyebrow">ORDER CHAT</p><h1>Order -{{ order_id }}</h1><p>Messages are saved and visible only to this order’s customer, restaurant, and assigned driver.</p></div></div>
   <div class="message-list">{% for message in messages %}<article class="{% if message.user_id == request.session.user_id %}mine{% endif %}"><strong>{{ message.user_name }}</strong><p>{{ message.body }}</p><small>{{ message.created_at }}</small></article>{% empty %}<p class="empty-copy">No messages yet. Start the conversation.</p>{% endfor %}</div>
   <form method="post" class="form-card operations-form">{% csrf_token %}<label>Message <textarea required name="body" maxlength="2000"></textarea></label><button>Send message</button></form>
   {% else %}

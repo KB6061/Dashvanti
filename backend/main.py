@@ -51,3 +51,7 @@ from backend.routers import driver_partner
 app.include_router(driver_partner.router, prefix='/api')
 from backend.routers import driver_agreement
 app.include_router(driver_agreement.router, prefix='/api')
+from backend.routers import delivery_fees
+app.include_router(delivery_fees.router, prefix='/api')
+from backend.routers import customer_account
+app.include_router(customer_account.router, prefix='/api')

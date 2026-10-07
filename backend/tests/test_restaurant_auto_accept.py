@@ -18,7 +18,7 @@ class RestaurantAutoAcceptTests(unittest.TestCase):
         self.restaurant=User(name='Auto audit restaurant',email='auto-audit-'+secrets.token_hex(8)+'@example.com',password='x',role='restaurant')
         self.driver=User(name='Auto audit driver',email='auto-audit-'+secrets.token_hex(8)+'@example.com',password='x',role='driver')
         self.db.add_all([self.customer,self.restaurant,self.driver]);self.db.flush()
-        self.db.add_all([Customer(id=self.customer.id),Restaurant(id=self.restaurant.id,name='Auto audit',address='Audit restaurant address',is_open=True),Driver(id=self.driver.id,online=True)]);self.db.flush()
+        self.db.add_all([Customer(id=self.customer.id),Restaurant(id=self.restaurant.id,name='Auto audit',address='Audit restaurant address',is_open=True,country='US',currency='USD',latitude=36.15,longitude=-86.78),Driver(id=self.driver.id,online=True)]);self.db.flush()
         self.candidate={'id':self.driver.id,'distance_miles':1,'drive_minutes':4,'distance_type':'driving'}
 
     def tearDown(self):
@@ -29,10 +29,10 @@ class RestaurantAutoAcceptTests(unittest.TestCase):
         self.db.add(row);self.db.flush();self.db.add(DeliveryStatus(order_id=row.id,status=status));self.db.flush();return row
 
     def test_cash_checkout_accepts_then_driver_must_accept(self):
-        menu=MenuItem(restaurant_id=self.restaurant.id,name='Audit meal',price=Decimal(10));address=Address(customer_id=self.customer.id,label='Audit',details='Audit delivery address')
+        menu=MenuItem(restaurant_id=self.restaurant.id,name='Audit meal',price=Decimal(10));address=Address(customer_id=self.customer.id,label='Audit',details='Audit delivery address',country='US',state='Tennessee',city='Nashville',latitude=36.16,longitude=-86.77)
         self.db.add_all([menu,address]);self.db.flush();self.db.add(CartItem(customer_id=self.customer.id,menu_item_id=menu.id,quantity=1));self.db.flush()
         data=Checkout(mode='delivery',payment_mode='Cash',address_id=address.id,request_key=secrets.token_hex(16))
-        with patch('backend.services.store_status_service.accepting',return_value=True),patch('backend.services.dispatch_service.nearby',return_value=[self.candidate]):
+        with patch('backend.services.eta_service.route',return_value={'distance_meters':1609.344,'distance_type':'driving'}),patch('backend.services.store_status_service.accepting',return_value=True),patch('backend.services.dispatch_service.nearby',return_value=[self.candidate]):
             result=order_service.checkout(self.db,self.customer,data)
         order=self.db.get(Order,result['id']);self.assertEqual(order.status,'ACCEPTED');self.assertIsNone(order.driver_id)
         offer=self.db.scalar(select(DriverOffer).where(DriverOffer.order_id==order.id));self.assertEqual(offer.driver_id,self.driver.id);self.assertEqual(offer.status,'OFFERED')
@@ -72,7 +72,7 @@ class RestaurantAutoAcceptTests(unittest.TestCase):
             order=self.order(status='PAYMENT_PENDING',payment_mode='PhonePe')
             cfg=AdminSettings(environment=environment,api_version='v2',encrypted_credentials='');self.db.add(cfg);self.db.flush()
             payment=Payment(user_id=self.customer.id,settings_id=cfg.id,merchant_order_id='audit-'+secrets.token_hex(12),request_key=secrets.token_hex(12),amount=2000,currency='INR',country='IN',environment=environment,api_version='v2',status='PENDING')
-            self.db.add(payment);self.db.flush();self.db.add(PaymentOrder(payment_id=payment.id,order_id=order.id));self.db.flush()
+            self.db.add(payment);self.db.flush();self.db.add(PaymentOrder(payment_id=payment.id,order_id=order.id,original_order_id=order.id));self.db.flush()
             with patch('backend.services.dispatch_service.nearby',return_value=[]):apply_status(self.db,payment.id,{'state':'COMPLETED','orderId':'audit-'+secrets.token_hex(8),'amount':2000})
             self.assertEqual(order.status,expected)
 

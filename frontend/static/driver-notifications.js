@@ -8,7 +8,7 @@
  button.onclick=async()=>{await Notification.requestPermission();await ready;sync();};
  window.addEventListener('dashvanti:delivery-offers',async event=>{
   if(!document.hidden||Notification.permission!=='granted')return;await ready;if(!registration)return;
-  for(const row of event.detail){await registration.showNotification('Dashvanti · Order #'+row.id,{body:[row.restaurant_name,row.restaurant_address,'Delivery: '+row.address,row.pickup_eta_minutes!=null?'Pickup ETA '+row.pickup_eta_minutes+' min':''].filter(Boolean).join('\n'),tag:'dashvanti-order-'+row.id,requireInteraction:true,data:{order_id:row.id},actions:[{action:'accept',title:'Accept'},{action:'reject',title:'Reject'}]});}
+  for(const row of event.detail){await registration.showNotification('Dashvanti · Order -'+row.id,{body:[row.restaurant_name,row.restaurant_address,'Delivery: '+row.address,row.pickup_eta_minutes!=null?'Pickup ETA '+row.pickup_eta_minutes+' min':''].filter(Boolean).join('\n'),tag:'dashvanti-order-'+row.id,requireInteraction:true,data:{order_id:row.id},actions:[{action:'accept',title:'Accept'},{action:'reject',title:'Reject'}]});}
  });
  navigator.serviceWorker.addEventListener('message',event=>{if(event.data?.type==='offers-refresh')window.dispatchEvent(new Event('dashvanti:offers-refresh'));});
 })();

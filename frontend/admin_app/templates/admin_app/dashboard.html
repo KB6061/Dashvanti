@@ -17,7 +17,7 @@
   <article class="admin-panel admin-recent">
     <div class="admin-panel-head"><div><h2>Recent Orders</h2><small>Database activity</small></div><a href="/admin/orders">View all</a></div>
     <div class="admin-table-scroll"><table><thead><tr><th>Order ID</th><th>Restaurant</th><th>Driver</th><th>Total</th><th>Status</th></tr></thead><tbody>
-    {% for row in recent_orders %}<tr><td><a href="/admin/order/{{ row.id }}">#{{ row.id }}</a></td><td>{{ row.restaurant }}</td><td>{{ row.driver }}</td><td>{{ row.currency }} {{ row.total|floatformat:2 }}</td><td><span class="admin-status status-{{ row.status|lower }}">{{ row.status|title }}</span></td></tr>{% empty %}<tr><td colspan="5">No orders yet.</td></tr>{% endfor %}
+    {% for row in recent_orders %}<tr><td><a href="/admin/order/{{ row.id }}">-{{ row.id }}</a></td><td>{{ row.restaurant }}</td><td>{{ row.driver }}</td><td>{{ row.currency }} {{ row.total|floatformat:2 }}</td><td><span class="admin-status status-{{ row.status|lower }}">{{ row.status|title }}</span></td></tr>{% empty %}<tr><td colspan="5">No orders yet.</td></tr>{% endfor %}
     </tbody></table></div>
   </article>
 </section>

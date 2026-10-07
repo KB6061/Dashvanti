@@ -39,10 +39,19 @@ def register(db, data):
         partner(db, user.id)
         consent.driver_id = user.id
         consent.registered_at = now()
+    if user.role == 'customer':
+        db.flush()
+        from backend.services.customer_account_service import record
+        from backend.customer_account_models import CustomerProfile
+        record(db, CustomerProfile, user).created_at = now()
+        if getattr(data, 'referral_code', None):
+            from backend.customer_account_models import CustomerReferral
+            referrer = db.scalar(select(CustomerReferral).where(CustomerReferral.code == data.referral_code.upper()))
+            if referrer:record(db, CustomerReferral, user).referred_by = referrer.customer_id
     emit(db, 'USER_REGISTERED', {'user_id': user.id, 'role': user.role})
     return {'id': user.id}
 
-def login(db, data):
+def login(db, data, request=None):
     identifier = str(data.email).strip().lower()
     user = db.scalar(select(User).where(User.email == identifier))
     if not user and '@' not in identifier:
@@ -54,6 +63,9 @@ def login(db, data):
     valid = passwords.verify(data.password, user.password if user else DUMMY)
     if not valid or not user or user.role != data.role:
         raise HTTPException(401, 'Invalid credentials')
+    from backend.services.customer_account_service import second_factor
+    challenge = second_factor(db, user, 'email', request)
+    if challenge:return challenge
     from backend.services.session_service import issue_tokens
     emit(db, 'USER_LOGGED_IN', {'user_id': user.id})
     return issue_tokens(user)

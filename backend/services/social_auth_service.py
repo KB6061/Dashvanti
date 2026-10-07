@@ -118,7 +118,7 @@ def verify_facebook(token):
         user.get('picture', {}).get('data', {}).get('url'))
 
 
-def authenticate(db, verified, link_user=None):
+def authenticate(db, verified, link_user=None, request=None):
     identity = db.scalar(select(SocialIdentity).where(
         SocialIdentity.provider == verified['provider'],
         SocialIdentity.provider_user_id == verified['provider_user_id']).with_for_update())
@@ -139,6 +139,10 @@ def authenticate(db, verified, link_user=None):
             db.add(user)
             db.flush()
             db.add(Customer(id=user.id))
+            db.flush()
+            from backend.services.customer_account_service import record
+            from backend.customer_account_models import CustomerProfile
+            record(db, CustomerProfile, user).created_at = now()
         identity = SocialIdentity(user_id=user.id, provider=verified['provider'],
             provider_user_id=verified['provider_user_id'])
         db.add(identity)
@@ -146,6 +150,9 @@ def authenticate(db, verified, link_user=None):
     identity.last_login_at = now()
     # Keep the local email/name stable; provider subjects are the login identity.
     db.flush()
+    from backend.services.customer_account_service import second_factor
+    challenge = second_factor(db, user, verified['provider'], request)
+    if challenge:return challenge
     issued = now()
     token = jwt.encode({'sub': str(user.id), 'ver': user.token_version, 'iat': issued,
         'exp': issued + timedelta(minutes=config.social_token_minutes),

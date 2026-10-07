@@ -2,13 +2,17 @@ from common_app.road_controls import road_controls
 from common_app.views import navigation_state
 from django.urls import path
 from common_app import views as common
-from . import views
+from . import views, account_views
 from .guest_views import guest_browse
 from common_app.social import social_proxy
 
 from . import payments
 
 urlpatterns = [
+    path('account/export', account_views.export),
+    path('account/verify-login', account_views.verify_login),
+    path('account', account_views.account),
+    path('account/<str:section>', account_views.account),
     path('road-controls', road_controls),
     path('payments/<str:action>', payments.proxy),
     path('payment/<int:transaction_id>', payments.result),
@@ -31,7 +35,7 @@ urlpatterns = [
     path('forgot',common.auth,{'role':'customer','action':'forgot'}),
     path('reset',common.auth,{'role':'customer','action':'reset'}),
     path('logout',common.logout,{'role':'customer'}),
-    path('profile',common.profile),
+    path('profile',account_views.account,{'section':'profile'}),
     path('files',common.files),
     path('files/<int:file_id>',common.download),
     path('orders',views.orders),

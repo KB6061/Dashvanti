@@ -173,7 +173,7 @@ def checkout(request):
     cart_data = call(request, 'GET', '/cart')
     form = CheckoutForm(
         request.POST or None,
-        initial={'request_key': uuid.uuid4().hex, 'mode': initial_mode},
+        initial={'request_key': uuid.uuid4().hex, 'mode': initial_mode, 'promo_code': request.GET.get('promo_code', '')[:40]},
     )
     form.fields['address_id'].choices = [('', 'Choose address')] + [
         (row['id'], row['label'] + ' — ' + row['details'])
@@ -196,19 +196,6 @@ def checkout(request):
     checkout_mode = request.POST.get('mode', initial_mode)
     if checkout_mode not in {'delivery', 'pickup'}:
         checkout_mode = initial_mode
-    promo_code = request.POST.get('promo_code', '').strip()
-    try:
-        quote = call(
-            request,
-            'POST',
-            '/cart/quote',
-            {'mode': checkout_mode, 'promo_code': promo_code or None},
-        )
-    except APIError as exc:
-        quote = call(request, 'POST', '/cart/quote', {'mode': checkout_mode})
-        if not form.errors:
-            form.add_error('promo_code', str(exc))
-
     selected_address_id = None
     try:
         selected_address_id = int(request.POST.get('address_id', ''))
@@ -219,6 +206,19 @@ def checkout(request):
         (row for row in addresses_data if row['id'] == selected_address_id),
         None,
     )
+    promo_code = request.POST.get('promo_code', request.GET.get('promo_code', '')).strip()
+    try:
+        quote = call(
+            request,
+            'POST',
+            '/cart/quote',
+            {'mode': checkout_mode, 'promo_code': promo_code or None, 'address_id': selected_address_id},
+        )
+    except APIError as exc:
+        quote = {'subtotal': cart_data.get('subtotal', 0), 'tax': 0, 'service_fee': 0, 'delivery_fee': 0, 'discount': 0, 'total': cart_data.get('subtotal', 0)}
+        if not form.errors:
+            form.add_error(None, str(exc))
+
     item_count = sum(group.get('item_count', 0) for group in cart_data.get('groups', []))
     return render(request, 'customer_app/checkout.html', {
         'form': form,
@@ -231,6 +231,7 @@ def checkout(request):
         'item_count': item_count,
         'checkout_restaurant_markers': [{'id': 'restaurant-' + str(group['restaurant_id']), 'name': group['restaurant_name'], 'address': group['restaurant_address']} for group in cart_data.get('groups', []) if group.get('restaurant_address')],
         'cancellation_policy': call(request,'GET','/cancellation-policy'),
+        'checkout_symbol': quote.get('symbol') or (cart_data.get('groups', [{}])[0].get('currency', 'USD') if cart_data.get('groups') else 'USD'),
         'checkout_currency': cart_data.get('groups', [{}])[0].get('currency', 'USD') if cart_data.get('groups') else 'USD',
         'title': 'Checkout',
     })
@@ -244,10 +245,13 @@ def checkout_quote(request):
     try:
         result = call(request, 'POST', '/cart/quote', {
             'mode': mode,
+            'address_id': int(request.POST['address_id']) if request.POST.get('address_id') else None,
             'promo_code': request.POST.get('promo_code', '').strip() or None,
             'tip': request.POST.get('tip') or '0',
         })
         return JsonResponse(result)
+    except (ValueError, TypeError):
+        return JsonResponse({'detail': 'Invalid delivery address'}, status=400)
     except APIError as exc:
         return JsonResponse({'detail': str(exc)}, status=exc.status)
 

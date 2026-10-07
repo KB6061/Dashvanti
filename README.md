@@ -250,3 +250,51 @@ PYTHONPATH=. .venv/bin/python deploy/migrate_driver_partners.py
 ```
 
 Admin reports: active, online, daily-deliveries, earnings, ratings, deposits, withdrawals, incidents, suspensions, insurance-claims. JSON downloads are available through each report page. Admin/operations-manager access is enforced on the backend. Managers can review documents, approve, reject and suspend; only admins can deactivate/reactivate, reveal bank details, process refunds/withdrawals or configure insurance.
+
+
+## Multi-country delivery pricing
+
+Admin: `/admin/delivery-fees`. Country defaults are overridden by state, then city. Use full geocoded state/city names. Countries, currencies, distance units, service limits, distance tiers, and surge windows are stored in PostgreSQL. Add another country and its national pricing through the admin page; no fee-engine code change is required.
+
+India defaults: INR, kilometers, base ₹20; distance charges 0 through 3 km, ₹10 through 5, ₹20 through 8, ₹35 through 12, then ₹35 + ₹5 for each additional km. Small-order charge ₹10 below ₹150. Base/distance fees are waived from ₹499 within 5 km. Service is initially disabled; allowed range is 0–5%.
+
+United States defaults: USD, miles, base $2.99; distance charges 0 through 2 miles, $1.99 through 5, $3.99 through 8, $5.99 through 12, then $5.99 + $0.50 for each additional mile. Small-order charge $2 below $10. Base/distance fees are waived from $35 within 5 miles. Service defaults to 8%; it may be disabled or configured from 5–15%. $2.99 + $1.99 is $4.98. Amounts use decimal arithmetic and half-up currency rounding; excess-distance charges are prorated.
+
+Free delivery does not waive active surge or small-order charges. Surge reasons are rain, holiday, festival, peak hours, high demand, and low driver availability. Enable conditions manually or configure timezone-qualified start/end timestamps. Different reasons stack; for the same reason only the most specific matching region applies. No weather feed is implied.
+
+Checkout uses the selected owned address before user profile country, then restaurant country as fallback. Cross-country/currency orders are rejected. Driving distance is used when available; real coordinate-based distance is explicitly labeled as a straight-line estimate when routing is unavailable. Unresolvable locations cannot complete checkout; the fixed legacy route-distance placeholder is never used for billing. Address edits invalidate stored location metadata.
+
+`POST /api/cart/quote` accepts `{ "mode": "delivery", "address_id": 123, "tip": "0" }` with customer JWT authentication. Existing snake_case fields remain; the response also includes `currency`, `symbol`, `foodTotal`, `deliveryFee`, `serviceFee`, `grandTotal`, and detailed per-restaurant fee components. Pickup orders have zero delivery, distance, surge, and small-order charges. Taxes and tips remain separate.
+
+`order_delivery_fee_snapshots` stores country, currency, both distances, source, food total, fee components, discounts, total, and the complete applied rules. Existing historical orders are not repriced or backfilled with invented distances. Customer order detail includes `fee_breakdown` for new orders. Checkout always recalculates on the backend; client-submitted prices are never accepted.
+
+Admin APIs (existing `X-Dashvanti-Admin-Secret` authentication required):
+
+```text
+GET    /api/admin/delivery-fees
+PUT    /api/admin/delivery-fees/countries
+PUT    /api/admin/delivery-fees/settings/{country_code}
+DELETE /api/admin/delivery-fees/settings/{rule_id}
+POST   /api/admin/delivery-fees/surges/{country_code}
+PUT    /api/admin/delivery-fees/surges/{country_code}/{surge_id}
+DELETE /api/admin/delivery-fees/surges/{rule_id}
+```
+
+Example tiers: `[{"up_to":3,"fee":0,"per_unit":0},{"up_to":5,"fee":10,"per_unit":0},{"up_to":8,"fee":20,"per_unit":0},{"up_to":12,"fee":35,"per_unit":0},{"up_to":null,"fee":35,"per_unit":5}]`. Upper boundaries are inclusive; the final tier is unlimited. City overrides are complete pricing profiles, not partial patches. Disabling the matching profile stops checkout for that location.
+
+```bash
+cd /home/krishna/food
+set -a
+source .env
+set +a
+.venv/bin/python -m backend.migrate_delivery_fees
+.venv/bin/python -m unittest backend.tests.test_delivery_fees backend.tests.test_restaurant_auto_accept -v
+PORTAL_ROLE=admin .venv/bin/python frontend/manage.py check
+PORTAL_ROLE=customer .venv/bin/python frontend/manage.py check
+PORTAL_ROLE=admin .venv/bin/python frontend/manage.py collectstatic --noinput
+sudo systemctl restart dashvanti@api dashvanti@customer dashvanti@admin dashvanti-driver-partners
+curl --fail http://127.0.0.1:8001/health
+sudo journalctl -u dashvanti@api -u dashvanti@customer -u dashvanti@admin -n 60 --no-pager
+```
+
+The migration is idempotent: existing admin settings and order fees are preserved. No new long-running service is required.

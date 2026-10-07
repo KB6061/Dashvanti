@@ -5,7 +5,9 @@
  const toolbar=document.createElement('div');toolbar.className='driver-map-toolbar';
  toolbar.innerHTML='<button type="button" data-expand-map aria-label="Open full map">Full map ⛶</button><button type="button" data-close-map aria-label="Close full map" hidden>✕</button>';
  wrap.append(toolbar);
- const speed=document.createElement('div');speed.className='driver-navigation-speed';speed.innerHTML='<strong data-live-speed>—</strong><span>mph</span>';speed.setAttribute('aria-label','Current GPS speed');wrap.append(speed);
+ const speed=document.createElement('div');speed.className='driver-navigation-speed';speed.innerHTML='<strong data-live-speed>—</strong><span>mph</span>';speed.setAttribute('aria-label','Current GPS speed');
+ const placeSpeed=()=>{const dock=host.querySelector('.navigation-bottom-controls'),navigate=dock?.querySelector('.driver-floating-navigate');if(dock){dock.insertBefore(speed,navigate || null);}};
+ window.addEventListener('dashvanti:navigation-controls-ready',placeSpeed);placeSpeed();
  const footer=document.createElement('div');footer.className='driver-navigation-arrival';footer.innerHTML='<div><strong data-arrival-clock>—</strong><span>arrival</span></div><div><strong data-arrival-minutes>—</strong><span>min</span></div><div><strong data-arrival-miles>—</strong><span>mi</span></div>';host.append(footer);
  const expand=toolbar.querySelector('[data-expand-map]'),close=toolbar.querySelector('[data-close-map]');
  let full=false,previousFocus;

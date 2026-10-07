@@ -52,6 +52,10 @@ def deliver_batch():
             order = db.get(Order, event.order_id)
             if not order or order.status in {'DELIVERED', 'CANCELLED', 'CANCELED', 'REJECTED'}:
                 continue
+            from backend.customer_account_models import CustomerNotificationSettings
+            preferences = db.get(CustomerNotificationSettings, order.customer_id)
+            if preferences and (not preferences.push or not preferences.order_updates or not preferences.delivery_alerts):
+                continue
             user = db.get(User, order.customer_id)
             devices = db.scalars(select(CustomerPushDevice).where(CustomerPushDevice.user_id == order.customer_id, CustomerPushDevice.token_version == user.token_version)).all() if user else []
             navigation = None

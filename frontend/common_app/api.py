@@ -48,7 +48,7 @@ def renew_session(request):
         raise APIError('Service temporarily unavailable. Please try again.', 503)
 
 def call(request, method, path, data=None, params=None, files=None, raw=False):
-    public_auth = path.startswith('/auth/') and path.rsplit('/', 1)[-1] in {'login', 'register', 'forgot', 'reset'}
+    public_auth = path.startswith('/auth/') and path.rsplit('/', 1)[-1] in {'login', 'register', 'forgot', 'reset', 'account-2fa'}
     try:
         if not public_auth:
             renew_session(request)
@@ -58,6 +58,7 @@ def call(request, method, path, data=None, params=None, files=None, raw=False):
         raise APIError('Session expired', 401)
     headers = {'Authorization':'Bearer '+request.session['token']} if request.session.get('token') else {}
     headers['Cookie'] = ''
+    headers['User-Agent'] = request.META.get('HTTP_USER_AGENT', '')[:500]
     if path.startswith(('/payment/', '/phonepe/')):
         import hashlib, hmac, os
         key = os.environ.get('PAYMENT_PROXY_SECRET', '')

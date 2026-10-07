@@ -17,7 +17,7 @@ def social_proxy(request, path):
     expected_method = 'GET' if path == 'social/config' else 'POST'
     if request.method != expected_method:
         return JsonResponse({'detail': 'Method not allowed'}, status=405)
-    headers = {'X-Forwarded-Proto': 'https'}
+    headers = {'X-Forwarded-Proto': 'https', 'User-Agent': request.META.get('HTTP_USER_AGENT', '')[:500]}
     if request.headers.get('Origin'):
         headers['Origin'] = request.headers['Origin']
     if request.headers.get('X-Social-CSRF'):
@@ -30,6 +30,10 @@ def social_proxy(request, path):
         data = upstream.json()
     except (ValueError, httpx.HTTPError):
         return JsonResponse({'detail': 'Sign-in service is temporarily unavailable'}, status=503)
+    if upstream.is_success and path in {'google', 'facebook'} and data.get('two_factor_required'):
+        request.session['account_2fa_challenge'] = data['challenge']
+        request.session['account_2fa_provider'] = path
+        return JsonResponse({'redirect_url': '/customer/account/verify-login'})
     if upstream.is_success and path in {'google', 'facebook'}:
         user = data['user']
         if user['role'] != 'customer':

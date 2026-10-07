@@ -115,7 +115,7 @@ def _period_key(dt, period):
         return dt.strftime('%Y-%m')
     if period == 'year':
         return dt.strftime('%Y')
-    return f'Order #{dt}'
+    return f'Order -{dt}'
 
 
 def _add_bucket(target, key, profit, driver, restaurant, refund):

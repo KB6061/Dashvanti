@@ -23,7 +23,9 @@ def broadcast_order_update(order_id, status, timestamp=None, db=None):
     order = db.get(Order, order_id)
     if not order:
         return None
+    from backend.services.customer_queue_tracking_service import state
     row = OrderBroadcastEvent(order_id=order_id, payload={
+        'queue': state(db, order),
         'type': 'order_update', 'order_id': order_id, 'status': ALIASES.get(status, status),
         'canonical_status': order.status, 'activity_status': status,
         'timestamp': timestamp or time.time(), 'customer_id': order.customer_id,
@@ -59,6 +61,11 @@ def install():
             if isinstance(row, DeliveryStatus) and not inspect(row).persistent:
                 continue
             updates[row.id if isinstance(row, Order) else row.order_id] = row.status
+        from backend.models_driver_queue import DriverUpcomingOrder
+        affected = {order.driver_id for uid in updates if (order := db.get(Order, uid)) and order.driver_id}
+        if affected:
+            for reservation in db.scalars(select(DriverUpcomingOrder).where(DriverUpcomingOrder.driver_id.in_(affected))):
+                updates.setdefault(reservation.order_id, 'DRIVER_QUEUED')
         records = [broadcast_order_update(uid, status, db=db) for uid, status in updates.items()]
         db.flush()
         db.info['order_stream_publish'] = [{**row.payload, 'event_id': row.id} for row in records if row]

@@ -5,9 +5,13 @@ from common_app import views as common
 from django.urls import path
 from . import views
 
-from . import payments
+from . import payments, delivery_fees
+
+from customer_app.account_views import admin_account
 
 urlpatterns = [
+    path('customer/<int:customer_id>/account', admin_account),
+    path('delivery-fees', delivery_fees.manage),
     path('driver-partners/manager-login', driver_partners.manager_login),
     path('driver-partners/manager-logout', driver_partners.manager_logout),
     path('driver-partners/reports/<str:kind>', driver_partners.reports),

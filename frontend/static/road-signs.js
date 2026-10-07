@@ -1,16 +1,15 @@
 (() => {
  const portal=['admin','driver','restaurant'].find(role=>document.body.classList.contains(role+'-portal')) || 'customer';
  const entries=new Map();
- const icon=kind=>{
-  const stop=kind==='stop';
-  const svg=stop?'<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52"><path d="M16 3H36L49 16V36L36 49H16L3 36V16Z" fill="#d82025" stroke="white" stroke-width="3"/><text x="26" y="32" text-anchor="middle" fill="white" font-family="Arial" font-size="14" font-weight="bold">STOP</text></svg>':'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="56"><rect x="5" y="2" width="30" height="51" rx="9" fill="#263238" stroke="white" stroke-width="3"/><circle cx="20" cy="13" r="5" fill="#b9c4ca"/><circle cx="20" cy="27" r="5" fill="#b9c4ca"/><circle cx="20" cy="41" r="5" fill="#b9c4ca"/></svg>';
-  return {url:'data:image/svg+xml,'+encodeURIComponent(svg),scaledSize:new google.maps.Size(stop?52:40,stop?52:56)};
+ const icon=()=>{
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52"><path d="M16 3H36L49 16V36L36 49H16L3 36V16Z" fill="#d82025" stroke="white" stroke-width="3"/><text x="26" y="32" text-anchor="middle" fill="white" font-family="Arial" font-size="14" font-weight="bold">STOP</text></svg>';
+  return {url:'data:image/svg+xml,'+encodeURIComponent(svg),scaledSize:new google.maps.Size(34,34)};
  };
  async function refresh(element){
   const state=element.dashvantiMapState,entry=entries.get(element);
   if(!state || !entry || document.hidden || element.closest('[hidden]'))return;
   const zoom=state.map.getZoom();
-  if(zoom<15){entry.markers.forEach(marker=>marker.setMap(null));return;}
+  if(zoom<14){entry.markers.forEach(marker=>marker.setMap(null));return;}
   const center=state.map.getCenter();if(!center)return;
   const lat=center.lat(),lng=center.lng(),area=lat.toFixed(2)+':'+lng.toFixed(2);
   if(entry.area===area){entry.markers.forEach(marker=>marker.setMap(state.map));return;}
@@ -25,7 +24,8 @@
    if(current.lat().toFixed(2)+':'+current.lng().toFixed(2)!==area){entry.retry=setTimeout(()=>refresh(element),30000);return;}
    entry.markers.forEach(marker=>marker.setMap(null));entry.markers.clear();entry.area=area;
    for(const node of data.points){
-    entry.markers.set(node.id,new google.maps.Marker({map:state.map.getZoom()>=15?state.map:null,position:{lat:node.lat,lng:node.lng},icon:icon(node.kind),title:node.kind==='stop'?'Mapped stop sign':'Mapped traffic signals (live signal state unavailable)',clickable:false,zIndex:100}));
+    if(node.kind!=='stop')continue;
+    entry.markers.set(node.id,new google.maps.Marker({map:state.map.getZoom()>=14?state.map:null,position:{lat:node.lat,lng:node.lng},icon:icon(),title:'Mapped stop sign',clickable:false,zIndex:1100}));
    }
    if(!state.roadAttribution && data.points.length){
     const label=document.createElement('a');label.href='https://www.openstreetmap.org/copyright';label.target='_blank';label.rel='noopener';label.textContent='Road signs © OpenStreetMap';label.style.cssText='background:white;color:#163e35;padding:3px;font-size:10px';

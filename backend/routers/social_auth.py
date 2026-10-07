@@ -66,7 +66,7 @@ def google_login(data: GoogleLogin, request: Request, response: Response,
     login_guard(request, data.csrf_token)
     nonce = service.consume_challenge(db, data.csrf_token)
     verified = service.verify_google(data.id_token, nonce)
-    return finish(response, service.authenticate(db, verified))
+    return finish(response, service.authenticate(db, verified, request=request))
 
 
 @router.post('/facebook')
@@ -76,7 +76,7 @@ def facebook_login(data: FacebookLogin, request: Request, response: Response,
     login_guard(request, data.csrf_token)
     service.consume_challenge(db, data.csrf_token)
     verified = service.verify_facebook(data.access_token)
-    return finish(response, service.authenticate(db, verified))
+    return finish(response, service.authenticate(db, verified, request=request))
 
 
 @router.post('/link/google')

@@ -255,6 +255,7 @@ window.dashvantiCarPinIcon=(heading=0)=>window.dashvantiNavigationIcon(heading,'
     }
     setStatus(element, found ? `${found} location${found === 1 ? '' : 's'} pinned` : 'Map ready');
     if(element.dataset.mapDriverLocation === 'true' && window.dashvantiDriverPosition)updateDriverPosition(state,window.dashvantiDriverPosition);
+    document.dispatchEvent(new CustomEvent('dashvanti:map-markers-ready',{detail:{element}}));
     return state;
   };
   const selectLocation = async (detail) => {

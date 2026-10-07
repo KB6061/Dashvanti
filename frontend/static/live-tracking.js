@@ -1,5 +1,6 @@
 (() => {
  const host = document.querySelector('[data-live-tracking]');
+ let trackingRevision = 0;
  if(!host) return;
 
  const mapElement = host.querySelector('[data-google-map]');
@@ -65,6 +66,7 @@
  let car, frame, state, pollTimer, routeTime = 0, routeKey = '', driverId, disposed = false, routeBusy = false, fitted = false, latest, lastDriverCenter = 0;
  let followDriver = true, controlsReady = false, routePath = [], lastLocalFix = 0, markerHeading = 0, cameraLocation = null;
  const renderers = [];
+ let remainingLine=null;
  const endpointMarkers = new Map();
  const routeBadges = [];
  const geometry = window.dashvantiRouteGeometry;
@@ -102,6 +104,13 @@
    instructionControl.className='navigation-instruction';
    instructionControl.innerHTML='<b class="navigation-maneuver" data-maneuver aria-hidden="true">↑</b><span data-next-distance></span><strong data-next-instruction></strong><small data-current-street></small>';
    instructionControl.setAttribute('role','status');
+   let guidanceSize='small';try{guidanceSize=localStorage.getItem('dashvanti-guidance-size') || 'small';}catch(_){}
+   const sizeButton=document.createElement('button');sizeButton.type='button';sizeButton.className='navigation-guidance-size';sizeButton.textContent='Size';
+   const sizes=['small','medium','large'];
+   const applySize=()=>{if(!sizes.includes(guidanceSize))guidanceSize='small';instructionControl.dataset.size=guidanceSize;sizeButton.setAttribute('aria-label','Directions size: '+guidanceSize+'. Click to change.');};
+   sizeButton.onclick=()=>{guidanceSize=sizes[(sizes.indexOf(guidanceSize)+1)%sizes.length];try{localStorage.setItem('dashvanti-guidance-size',guidanceSize);}catch(_){}applySize();};
+   applySize();instructionControl.append(sizeButton);
+
    state.map.controls[google.maps.ControlPosition.TOP_CENTER].push(instructionControl);
    alternativesControl=document.createElement('div');
    alternativesControl.className='navigation-alternatives';
@@ -134,8 +143,18 @@
    selectRoute(index);
  }
 
+ function updateRemainingRoute(position) {
+   if(role!=='driver' || !navigating || !state || !routePath.length){remainingLine?.setMap(null);return;}
+   const point=position || (car ? geometry.point(car.getPosition()) : lastLocation ? {lat:lastLocation.latitude,lng:lastLocation.longitude} : routePath[0]);
+   const projection=geometry.project(routePath,{latitude:point.lat,longitude:point.lng,accuracy:15,speed:0});
+   if(!projection?.point)return;
+   const path=[projection.point,...routePath.filter(value=>value.metres>projection.metres)].map(value=>({lat:value.lat,lng:value.lng}));
+   if(!remainingLine)remainingLine=new google.maps.Polyline({map:state.map,strokeColor:'#2448df',strokeWeight:7,strokeOpacity:1,clickable:false,zIndex:10});
+   remainingLine.setPath(path);remainingLine.setMap(state.map);
+ }
  function routeVisibility() {
-   renderers.forEach((renderer,index)=>renderer.setMap(!navigating || index===selectedRoute?state.map:null));
+   renderers.forEach((renderer,index)=>renderer.setMap(role==='driver' && navigating ? null : (!navigating || index===selectedRoute?state.map:null)));
+   updateRemainingRoute();
    routeHits.forEach((line,index)=>line.setOptions({map:navigating?null:state.map,zIndex:index===selectedRoute?30:20}));
    if(alternativesControl)alternativesControl.hidden=navigating || Date.now()>=choiceDeadline || (routeResult?.routes.length || 0)<2;
  }
@@ -149,7 +168,7 @@
 
  function selectRoute(index) {
    selectedRoute=index;
-   renderers.forEach((renderer,i)=>renderer.setOptions({polylineOptions:{strokeColor:i===index?(role==='customer'?'#17212b':'#4032ef'):'#85a5fc',strokeWeight:i===index?(role==='customer'?5:8):5,strokeOpacity:1,zIndex:i===index?10:5}}));
+   renderers.forEach((renderer,i)=>renderer.setOptions({polylineOptions:{strokeColor:i===index?'#2448df':'#85a5fc',strokeWeight:i===index?(role==='customer'?5:8):5,strokeOpacity:1,icons:[],zIndex:i===index?10:5}}));
    const activeRoute=routeResult.routes[index], active=activeRoute.legs[0];
    routeGeometry=geometry.build(activeRoute);routePath=routeGeometry.path;
    previousProjection=null;offRouteFixes=0;
@@ -186,7 +205,7 @@
    controlsReady=true;
    if(role==='driver')state.map.setOptions({fullscreenControl:false});
    navigationControls();
-   trafficLayer=new google.maps.TrafficLayer();trafficLayer.setMap(state.map);
+   trafficLayer=new google.maps.TrafficLayer();trafficLayer.setMap(role==='driver'?null:state.map);
    const controls=document.createElement('div');
    controls.className='navigation-recenter';
    controls.hidden=true;
@@ -267,11 +286,22 @@
  function focusCamera(location, immediate=false) {
    if(!followDriver || !state?.map)return;
    const map=state.map;
-   const heading=markerHeading;
+   const currentHeading=Number(map.getHeading?.()) || 0;
+   const delta=((markerHeading-currentHeading+540)%360)-180;
+   const heading=immediate ? markerHeading : (currentHeading+delta*.24+360)%360;
    const vector=map.getRenderingType?.()===google.maps.RenderingType?.VECTOR;
-   const center={lat:location.latitude,lng:location.longitude};
-   const zoom=Number(location.speed)>15?18.5:19;
-   if(map.moveCamera && vector)map.moveCamera({center,zoom,heading,tilt:45});
+   let center={lat:location.latitude,lng:location.longitude};
+   const zoom=host.hasAttribute('data-tracking-preview')?16.5:role==='driver'?(Number(location.speed)>15?19:19.5):(Number(location.speed)>15?18.5:19);
+   if(role==='driver' && navigating){
+     const radians=Math.PI/180,latitude=location.latitude*radians,bearing=heading*radians;
+     const metresPerPixel=156543.03392*Math.cos(latitude)/Math.pow(2,zoom);
+     const distance=metresPerPixel*Math.max(200,mapElement.clientHeight)*.20/6371000;
+     const targetLatitude=Math.asin(Math.sin(latitude)*Math.cos(distance)+Math.cos(latitude)*Math.sin(distance)*Math.cos(bearing));
+     const targetLongitude=location.longitude*radians+Math.atan2(Math.sin(bearing)*Math.sin(distance)*Math.cos(latitude),Math.cos(distance)-Math.sin(latitude)*Math.sin(targetLatitude));
+     center={lat:targetLatitude/radians,lng:targetLongitude/radians};
+   }
+
+   if(map.moveCamera && vector)map.moveCamera({center,zoom,heading,tilt:host.hasAttribute('data-tracking-preview')?0:45});
    else {map.panTo(center);if(map.getZoom()!==zoom)map.setZoom(zoom);}
    car?.setIcon(vehicleIcon(markerHeading));
    cameraLocation=location;
@@ -295,8 +325,9 @@
    const projected = routePosition(location);
    let journey=geometry.journey(routePath,previousProjection,projected);
    previousProjection=projected;instruction();
+   updateRemainingRoute(car ? geometry.point(car.getPosition()) : projected.point);
    const target = projected.point;
-   const heading = projected.heading; markerHeading=heading;
+   const heading = Number.isFinite(projected.heading) ? projected.heading : markerHeading; markerHeading=heading;
    cameraLocation={latitude:target.lat,longitude:target.lng,speed:location.speed};
 
    if(!car) {
@@ -329,7 +360,7 @@
      journey=geometry.journey(routePath,visible,projected);
    }
    const began = performance.now();
-   const duration = role === 'driver' ? 800 : 1800;
+   const duration = role === 'driver' ? 1200 : 1800;
    if(journey.length>1)journey[0]=geometry.point(start);
 
    const animate = now => {
@@ -342,6 +373,7 @@
      car.setPosition({lat: currentLat, lng: currentLng});
      if(followDriver && (now - lastDriverCenter > 80 || progress===1)) {
        lastDriverCenter = now;
+       updateRemainingRoute({lat:currentLat,lng:currentLng});
        focusCamera({latitude:currentLat,longitude:currentLng,speed:location.speed});
        car.setIcon(vehicleIcon(markerHeading));
      }
@@ -393,7 +425,7 @@
        const renderer=previous[index] || new google.maps.DirectionsRenderer();
        renderer.setOptions({map:state.map,directions:{...result,routes:[option]},routeIndex:0,preserveViewport:true,suppressMarkers:true,suppressInfoWindows:true});
        renderers.push(renderer);
-       const hit=new google.maps.Polyline({map:state.map,path:geometry.build(option).path.map(point=>({lat:point.lat,lng:point.lng})),strokeOpacity:0.01,strokeWeight:22,clickable:true,zIndex:20});
+       const hit=new google.maps.Polyline({map:state.map,path:geometry.build(option).path.map(point=>({lat:point.lat,lng:point.lng})),strokeColor:'#2448df',strokeOpacity:0,strokeWeight:22,clickable:true,zIndex:20});
        hit.addListener('click',()=>chooseRoute(index));routeHits.push(hit);
      });
      previous.slice(renderers.length).forEach(renderer=>renderer.setMap(null));
@@ -413,8 +445,50 @@
  }
 
   let lastStreamFix=0;
+  function selectDriver(value) {
+    const next = value == null ? null : Number(value);
+    if(driverId === next) return;
+    cancelAnimationFrame(frame); car?.setMap(null); car = null; driverId = next;
+    lastStreamFix = 0; routeKey = ''; fitted = false; routeGeneration++;
+    choiceLeg=''; choiceDeadline=0; clearTimeout(choiceTimer);
+    routeHits.splice(0).forEach(line=>line.setMap(null));
+    renderers.forEach(line=>line.setMap(null)); renderers.length=0; clearRouteBadges();
+    remainingLine?.setMap(null);remainingLine=null;
+    routePath=[]; routeGeometry={path:[],steps:[]}; previousProjection=null; lastLocation=null; offRouteFixes=0; selectedSummary='';
+  }
+  function driverDetails(data) {
+    const driver = data.queue?.driver || data.driver || data.location?.driver;
+    const assignment = document.getElementById('driver-assignment-status');
+    const vehicle = document.getElementById('driver-vehicle');
+    const info = document.getElementById('driver-info');
+    const coordinates = document.getElementById('driver-location');
+    if(assignment) assignment.textContent = data.queue?.message || (driver ? `${driver.name} is assigned to your order.` : data.driver_id ? 'Your delivery partner accepted the order.' : 'Waiting for a delivery partner.');
+    if(vehicle) vehicle.textContent = driver ? [driver.vehicle_type, driver.vehicle_number].filter(Boolean).join(' ') : '';
+    if(info) info.textContent = driver ? ['Driver: '+driver.name, driver.phone, driver.vehicle_type, driver.vehicle_number].filter(Boolean).join(' · ') : data.driver_id ? 'Driver assigned' : 'Driver not assigned';
+    if(coordinates) coordinates.textContent = data.location ? `Live location: ${Number(data.location.latitude).toFixed(5)}, ${Number(data.location.longitude).toFixed(5)}` : data.driver_id ? 'Waiting for live GPS signal.' : 'Waiting for a delivery partner.';
+  }
+  const trackingMapReady = event => {
+    if(disposed || event.detail?.element !== mapElement) return;
+    state = mapElement.dashvantiMapState; attachControls();
+    if(latest?.location) move(latest.location);
+    if(latest?.mode === 'delivery') void drawRoutes(latest);
+  };
+  document.addEventListener('dashvanti:map-ready', trackingMapReady);
+  document.addEventListener('dashvanti:map-markers-ready', trackingMapReady);
   window.addEventListener('dashvanti:order-update',event=>{
     if(String(event.detail.order_id)!==host.dataset.orderId)return;
+    trackingRevision++;
+    if(Object.prototype.hasOwnProperty.call(event.detail, 'driver_id')) {
+      const next = event.detail.driver_id == null ? null : Number(event.detail.driver_id);
+      if(driverId !== next) {
+        selectDriver(next);
+        if(latest) { latest={...latest,driver_id:driverId,driver:null,location:null,route:null,driver_status:driverId ? 'DRIVER_ASSIGNED' : null}; driverDetails(latest); }
+      }
+    }
+    if(latest && Object.prototype.hasOwnProperty.call(event.detail, 'queue')) {
+      latest={...latest,queue:event.detail.queue}; driverDetails(latest);
+      text('[data-driver-activity]', event.detail.queue?.message || labels[event.detail.activity_status] || 'Assigning delivery partner');
+    }
     const statusEl=document.getElementById('order-status');
     if(statusEl)statusEl.textContent=labels[event.detail.canonical_status] || event.detail.status;
     if(polling)statusQueued=true;else void poll();
@@ -430,9 +504,11 @@
   window.addEventListener('dashvanti:gps-stream',event=>{
     const data=event.detail;
     if(disposed || data.type!=='driver_location' || String(data.order_id)!==host.dataset.orderId)return;
-    if(driverId && driverId!==data.driver_id)return;
+    if(driverId && driverId!==Number(data.driver_id))return;
+    if(!driverId) selectDriver(data.driver_id);
     lastStreamFix=Date.now();
-    if(latest)latest={...latest,driver_id:data.driver_id,location:data};
+    if(latest) { latest={...latest,driver_id:Number(data.driver_id),driver:data.driver || latest.driver,location:data}; driverDetails(latest); }
+    if(host.hasAttribute('data-tracking-preview'))window.dispatchEvent(new CustomEvent('dashvanti:tracking',{detail:{...latest,order_id:Number(host.dataset.orderId),location:data}}));
     state=mapElement?.dashvantiMapState;
     if(state){attachControls();move(data);if(latest)void drawRoutes(latest);}
     text('[data-tracking-health]','Live GPS · '+new Date(data.updated_at).toLocaleTimeString());
@@ -441,6 +517,7 @@
   async function poll() {
    if(disposed || polling) return;
    polling = true; clearTimeout(pollTimer);
+   const revision = trackingRevision;
    let received = false;
    try {
      const response = await fetch(host.dataset.trackingUrl, {credentials: 'same-origin', cache: 'no-store', signal: window.dashvantiTimeoutSignal(10000)});
@@ -452,14 +529,18 @@
      if(!response.ok) throw new Error('Tracking unavailable');
      const data = await response.json();
      if(!data || typeof data.status !== 'string') throw new Error('Invalid tracking payload');
+     if(revision !== trackingRevision) { statusQueued = true; return; }
 
      received = true;
+     selectDriver(data.driver_id);
+     if(!data.location && latest?.location && String(latest.driver_id)===String(data.driver_id) && Date.now()-lastStreamFix<10000)data.location=latest.location;
      latest = data;
+     driverDetails(data);
      window.dispatchEvent(new CustomEvent('dashvanti:tracking', {detail: data}));
 
      // Update Order Status Steps & Labels
      text('[data-restaurant-activity]', labels[data.restaurant_status] || data.restaurant_status);
-     text('[data-driver-activity]', labels[data.driver_status] || 'Assigning delivery partner');
+     text('[data-driver-activity]', data.queue?.message || labels[data.driver_status] || 'Assigning delivery partner');
 
      const statusEl = document.getElementById('order-status');
      if(statusEl) statusEl.textContent = labels[data.status] || data.status;
@@ -471,23 +552,16 @@
      if(['CANCELLED','CANCELED','REJECTED','DELIVERED'].includes(data.status)) {
        disposed = true; host.hidden = true;routeGeneration++;
        clearTimeout(choiceTimer);routeHits.splice(0).forEach(line=>line.setMap(null));if(alternativesControl)alternativesControl.hidden=true;
+       remainingLine?.setMap(null);
        trafficLayer?.setMap(null);renderers.forEach(renderer=>renderer.setMap(null));car?.setMap(null);clearRouteBadges();
        document.querySelector('.driver-floating-navigate')?.remove();
        return;
      }
      if(state) {
        attachControls();
-       if(driverId !== data.driver_id) {
-         cancelAnimationFrame(frame);
-         car?.setMap(null); car = null;
-         driverId = data.driver_id;
-         routeKey = ''; fitted = false;routeGeneration++;
-         choiceLeg='';choiceDeadline=0;routeHits.splice(0).forEach(line=>line.setMap(null));
-         routePath=[];routeGeometry={path:[],steps:[]};previousProjection=null;lastLocation=null;offRouteFixes=0;selectedSummary='';
-         renderers.forEach(r => r.setMap(null)); renderers.length = 0; clearRouteBadges();
-       }
+       selectDriver(data.driver_id);
 
-        if(data.location && Date.now()-lastStreamFix>6000 && (role !== 'driver' || Date.now()-lastLocalFix>2500)) {
+        if(data.location && (!car || Date.now()-lastStreamFix>6000) && (role !== 'driver' || Date.now()-lastLocalFix>2500)) {
          move({...data.location,updated_at:data.location.updated_at || data.updated_at});
        }
 

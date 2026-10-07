@@ -7,6 +7,7 @@
   <div class="restaurant-store-layout">
   <aside class="restaurant-store-info">
     <h2>Store Info</h2>
+    {% if signed_in %}<form method="post" action="/customer/account/favorites" data-no-ajax="true">{% csrf_token %}<input name="action" value="favorite_add" type="hidden"><input name="restaurant_id" value="{{ restaurant.id }}" type="hidden"><button>Save to favorites</button></form>{% endif %}
     <p>{% if restaurant.is_open %}<strong class="restaurant-open">Open now</strong>{% else %}Closed{% endif %}</p>
     <p>&#9733; {{ rating }}</p><p>{{ restaurant.cuisine }}</p>
     <p>{{ restaurant.description }}</p>

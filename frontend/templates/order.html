@@ -5,7 +5,7 @@
 
 {% if portal == 'driver' %}{% csrf_token %}{% endif %}
 {% if portal == 'driver' %}
-<header class="driver-order-header"><h1>Order #{{ order.id }}</h1><div class="driver-order-controls">
+<header class="driver-order-header"><h1>Order -{{ order.id }}</h1><div class="driver-order-controls">
   {% if order.status != "DELIVERED" and order.status != "CANCELLED" and order.status != "REJECTED" %}<button type="button" data-cancel-order="/{{ portal }}/order/{{ order.id }}/cancellation">{% if portal == "driver" %}Release delivery{% else %}Cancel order{% endif %}</button>{% endif %}
   <div data-order-actions>
   {% for action in actions %}
@@ -17,7 +17,7 @@
   {% endfor %}
   </div>
 </div></header>
-{% else %}<h1>Order #{{ order.id }}</h1>{% endif %}
+{% else %}<h1>Order -{{ order.id }}</h1>{% endif %}
   {% if show_live_map %}
   {% if portal == 'customer' or portal == 'driver' %}
   {{ tracking_markers|json_script:"customer-order-map-markers" }}
@@ -50,6 +50,7 @@
 <section class="card" >
   <p class="eyebrow" id="order-status" data-order-status="{{ order.id }}" data-status="{{ order.status }}" aria-live="polite">{% if order.status == 'ACCEPTED' or order.status == 'CONFIRMED' or order.status == 'PREPARING' %}Preparing Order{% else %}{{ order.status }}{% endif %}</p>
 
+{% if portal != 'driver' %}
   <div class="order-table-wrap"><table class="order-data-table"><caption>Order summary</caption><tbody>
   <tr><th>Fulfilment</th><td>{{ order.mode|title }}</td></tr><tr><th>Address</th><td>{{ order.address }}</td></tr>
   <tr><th>Tax</th><td>&#36;{{ order.tax|default:0|floatformat:2 }}</td></tr>
@@ -59,12 +60,14 @@
   <tr><th>Delivery Partner tip</th><td>&#36;{{ order.tip|default:0|floatformat:2 }}</td></tr>
   <tr><th>Total</th><td><strong>&#36;{{ order.total|floatformat:2 }}</strong></td></tr>
   </tbody></table></div>
-  <div class="order-table-wrap"><table class="order-data-table" data-order-table><caption>Menu items</caption><thead><tr><th>Item</th><th>Quantity</th><th>Unit price</th><th>Special instructions</th></tr></thead><tbody>
-  {% for item in items %}<tr><td>{{ item.name }}</td><td>{{ item.quantity }}</td><td>&#36;{{ item.price|floatformat:2 }}</td><td>{{ item.special_instructions|default:'—' }}</td></tr>{% empty %}<tr><td colspan="4">No items.</td></tr>{% endfor %}
+{% endif %}
+  <div class="order-table-wrap"><table class="order-data-table" data-order-table><caption>Menu items</caption><thead><tr><th>Item</th><th>Quantity</th>{% if portal != 'driver' %}<th>Unit price</th>{% endif %}<th>Special instructions</th></tr></thead><tbody>
+  {% for item in items %}<tr><td>{{ item.name }}</td><td>{{ item.quantity }}</td>{% if portal != 'driver' %}<td>&#36;{{ item.price|floatformat:2 }}</td>{% endif %}<td>{{ item.special_instructions|default:'—' }}</td></tr>{% empty %}<tr><td colspan="4">No items.</td></tr>{% endfor %}
   </tbody></table></div>
-  <p id="driver-info">
+{% if portal != 'driver' %}  <p id="driver-info">
     {% if driver %}Driver: {{ driver.name }} &middot; {{ driver.phone }}{% if driver.vehicle_type %} &middot; {{ driver.vehicle_type }} {{ driver.vehicle_number }}{% endif %}{% else %}Driver not assigned{% endif %}
   </p>
+{% endif %}
   {% if customer and portal == 'restaurant' %}
   <p>Customer: {{ customer.name }} &middot; {{ customer.phone|default:'phone not added' }}</p>
   {% endif %}
@@ -83,6 +86,7 @@
   {% endif %}
 </section>
 
+{% if portal != 'driver' %}
 <h2 class="mt-4">Order timeline</h2>
 {% if portal == 'restaurant' %}
 <div class="order-table-wrap"><table class="order-data-table"><caption>Order status history and assigned delivery partner contact</caption>
@@ -102,6 +106,7 @@
 </ol>
 {% endif %}
 
+{% endif %}
 {% if portal == 'customer' %}
 {% if restaurant.name == 'Taj Indian Restaurant' %}
 <form method="post" action="/customer/order/{{ order.id }}/reorder">

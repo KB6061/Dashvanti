@@ -4,6 +4,8 @@ from backend.models import Address, Customer, CustomerLocation, User
 
 def update_profile(db, user, data):
     values = data.model_dump()
+    if user.role == 'customer' and ((values.get('email') and str(values['email']).lower() != user.email.lower()) or ('phone' in values and values['phone'] != user.phone)):
+        raise HTTPException(403, 'Update email or mobile through My Account with password confirmation')
     country = values.pop('country', None)
     if country:
         from backend.services.geo_service import normalize_country
@@ -32,8 +34,16 @@ def save_address(db, user, data, address_id=None):
         raise HTTPException(404, 'Address not found')
     if data.is_default:
         db.execute(update(Address).where(Address.customer_id == user.id).values(is_default=False))
+    changed = row.details != data.details
     for key, value in data.model_dump().items():
         setattr(row, key, value)
+    if changed:
+        row.country = row.state = row.city = row.latitude = row.longitude = None
+        from backend.services.restaurant_location_service import geocode
+        found = geocode(address=row.details) or {}
+        for key in ('country', 'state', 'city', 'latitude', 'longitude'):
+            if found.get(key) is not None:
+                setattr(row, key, found[key])
     db.add(row)
     db.flush()
     return row

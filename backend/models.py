@@ -85,6 +85,11 @@ class Address(Identity, Base):
     details: Mapped[str] = mapped_column(String(500))
     is_default: Mapped[bool] = mapped_column(default=False)
     place_id: Mapped[str | None] = mapped_column(String(255))
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 class MenuItem(Identity, Base):
     __tablename__ = 'menu_items'
@@ -277,3 +282,4 @@ from backend.models_driver_queue import DriverUpcomingOrder
 from backend.models_gps import EssentialGPSPoint
 
 import backend.models_driver_partner
+import backend.delivery_fee_models

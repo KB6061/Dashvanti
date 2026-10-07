@@ -88,7 +88,7 @@ def bill(db, user, order_id, tz="America/Chicago"):
                ('Delivery fee', order.delivery_fee), ('Discount', -(order.discount or 0)),
                ('Delivery Partner tip', order.tip), ('Total', order.total)]
     rows.extend([[name, '', '', money(value)] for name, value in charges])
-    return pdf(f'Dashvanti - Order #{order.id} bill', [
+    return pdf(f'Dashvanti - Order -{order.id} bill', [
         data['restaurant']['name'], data['restaurant']['address'] or '',
         'Customer: ' + (data['customer'] or {}).get('name', ''),
         f'Order date: {local_time(order.created_at, tz)}',

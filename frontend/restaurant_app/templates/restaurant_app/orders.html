@@ -8,7 +8,7 @@
 <div class="history-table-wrap"><table>
 <thead><tr><th>Order ID</th><th>Date</th><th>Customer</th><th>Driver</th><th>Mode</th><th>Total</th><th>Status</th></tr></thead>
 <tbody>{% for order in orders %}<tr data-order-row data-order-url="/restaurant/order/{{ order.id }}" tabindex="0" data-status="{{ order.status }}" data-phone="{{ order.customer_phone }}" data-menu-search="{% for item in order.items %}{{ item.name }} {% endfor %}">
-<td><a href="/restaurant/order/{{ order.id }}" aria-label="View order {{ order.id }}">#{{ order.id }}</a></td>
+<td><a href="/restaurant/order/{{ order.id }}" aria-label="View order {{ order.id }}">-{{ order.id }}</a></td>
 <td><time datetime="{{ order.created_at }}">{{ order.created_at }}</time></td>
 <td>{{ order.customer_name }}</td><td>{{ order.driver_name|default:'Unassigned' }}</td>
 <td>{{ order.mode|title }}</td><td>&#36;{{ order.total|floatformat:2 }}</td>

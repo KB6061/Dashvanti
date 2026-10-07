@@ -52,3 +52,14 @@ body.customer-shell-page .customer-sidebar{display:none}
 body.customer-shell-page.customer-menu-open .customer-sidebar{display:flex}
 @media(max-width:1250px){body.customer-shell-page .customer-topbar{grid-template-columns:180px minmax(0,1fr)}body.customer-shell-page .customer-brand-group .customer-mark{width:110px;height:75px}body.customer-shell-page .customer-brand-group .customer-mark img{width:110px;height:75px}}
 @media(max-width:650px){body.customer-shell-page .customer-topbar{grid-template-columns:150px minmax(0,1fr)}body.customer-shell-page .customer-brand-group{gap:6px}body.customer-shell-page .customer-brand-group .customer-mark,body.customer-shell-page .customer-brand-group .customer-mark img{width:88px;height:70px}}
+
+body.customer-shell-page.customer-menu-open .customer-sidebar{width:min(300px,calc(100vw - 16px))}
+.customer-menu-items .sidebar-account-list{display:flex;flex-direction:column;overflow-y:auto;min-height:0}
+body.customer-shell-page .sidebar-account-list>a,body.customer-shell-page .sidebar-account-list>button{display:flex;align-items:center;gap:14px;width:100%;padding:13px 16px;min-height:48px;background:transparent;color:#173f30;border:0;border-radius:10px;text-align:left;text-decoration:none;transition:background .18s,transform .18s}
+body.customer-shell-page .sidebar-account-list>a:hover,body.customer-shell-page .sidebar-account-list>button:hover{background:#e7f1e1;transform:translateX(3px)}
+body.customer-shell-page .sidebar-account-list>a:focus-visible,body.customer-shell-page .sidebar-account-list>button:focus-visible{outline:2px solid #20583e;outline-offset:-2px;background:#e7f1e1}
+body.customer-shell-page .sidebar-account-list span{width:24px;flex-shrink:0;text-align:center;font-size:20px}
+.sidebar-profile{display:flex;align-items:center;gap:12px;padding:14px 12px;margin-bottom:6px;background:white;border:1px solid #dce6d8;border-radius:14px;color:#173f30;text-decoration:none}
+body.customer-shell-page .sidebar-profile .sidebar-avatar{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:#20583e;color:white;font-size:22px;font-weight:700;flex-shrink:0}
+.sidebar-profile strong,.sidebar-profile small{display:block}.sidebar-profile small{margin-top:4px;color:#607367}.sidebar-profile:hover{background:#edf5e9}
+@media(prefers-reduced-motion:reduce){body.customer-shell-page .sidebar-account-list>a,body.customer-shell-page .sidebar-account-list>button{transition:none;transform:none}}

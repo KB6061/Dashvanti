@@ -13,7 +13,7 @@
   </form>
   <div class="admin-table">
     {% for row in rows %}
-    <article><strong>#{{ row.id }} {{ row.name }}</strong><span>{{ row.role }} · {{ row.email }} · {{ row.phone|default:'no phone' }}</span></article>
+    <article><strong>#{{ row.id }} {{ row.name }}</strong><span>{{ row.role }} · {{ row.email }} · {{ row.phone|default:'no phone' }}</span>{% if row.role == "customer" %}<a href="/admin/customer/{{ row.id }}/account">View account</a>{% endif %}</article>
     {% empty %}<p>No users found.</p>{% endfor %}
   </div>
 </section>
