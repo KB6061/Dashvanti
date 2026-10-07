@@ -298,3 +298,10 @@ sudo journalctl -u dashvanti@api -u dashvanti@customer -u dashvanti@admin -n 60 
 ```
 
 The migration is idempotent: existing admin settings and order fees are preserved. No new long-running service is required.
+
+
+## Account, Support and Audit Management
+
+See [setup and payment configuration](docs/account-enhancements.md) and [environment settings](docs/account-enhancements.env.example).
+
+Run isolated account tests with `python -m backend.tests.run_account_tests`.

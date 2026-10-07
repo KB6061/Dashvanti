@@ -146,6 +146,8 @@ def authenticate(db, verified, link_user=None, request=None):
         identity = SocialIdentity(user_id=user.id, provider=verified['provider'],
             provider_user_id=verified['provider_user_id'])
         db.add(identity)
+    from backend.services.account_experience_service import initialize_profile
+    initialize_profile(db, user, request)
     identity.profile_picture = verified['profile_picture']
     identity.last_login_at = now()
     # Keep the local email/name stable; provider subjects are the login identity.

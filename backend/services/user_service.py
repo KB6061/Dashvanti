@@ -95,7 +95,14 @@ def save_current_location(db, user, data):
     country=normalize_country(data.country)
     if country or not unchanged:
         location.country=country
-    if country and not user.country:user.country=country
+    if country:user.country=country
+    from backend.services.customer_account_service import record
+    from backend.customer_account_models import CustomerProfile
+    from backend.services.restaurant_location_service import geocode
+    profile=record(db,CustomerProfile,user)
+    found=geocode(latlng=f'{data.latitude},{data.longitude}') or {}
+    if found.get('country'):user.country=location.country=found['country']
+    if found.get('city'):profile.city=found['city'];profile.state=found.get('state','')
     if detected and not db.scalar(select(Address.id).where(Address.customer_id==user.id)):
         db.add(Address(customer_id=user.id,label='Current location',details=data.address,is_default=True))
     db.flush()

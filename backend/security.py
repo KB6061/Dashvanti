@@ -18,6 +18,16 @@ def current_user(request: Request, auth: HTTPAuthorizationCredentials = Depends(
         request.state.log_user_id = user.id
         request.state.log_user_name = user.name or '-'
         request.state.log_user_phone = user.phone or '-'
+        from backend.services.account_location_service import client_ip
+        actor = {'id': user.id, 'name': user.name, 'role': user.role, 'ip': client_ip(request), 'device': request.headers.get('user-agent', '')[:500]}
+        request.state.audit_actor = actor
+        db.info['audit_actor'] = actor
+        import json
+        try:reason=json.loads(request.headers.get('x-dashvanti-audit-reason','""'))
+        except ValueError:reason=''
+        if isinstance(reason,str):db.info['audit_reason']=reason[:500]
+        from backend.audit_context import actor as actor_context
+        actor_context.set(actor)
         return user
     except (jwt.PyJWTError, ValueError, KeyError):
         raise HTTPException(401, 'Session expired')
@@ -33,6 +43,8 @@ def role(*allowed):
     return check
 
 
-def admin_secret(value: str = Header(default='', alias='X-Dashvanti-Admin-Secret')):
+def admin_secret(value: str = Header(default='', alias='X-Dashvanti-Admin-Secret'), user=Depends(role('admin'))):
+    if getattr(user,'role',None)!='admin':
+        raise HTTPException(403,'Authenticated administrator required')
     if not settings.admin_secret or not secrets.compare_digest(value, settings.admin_secret):
         raise HTTPException(403, 'Forbidden')

@@ -3,7 +3,7 @@ import os
 import time
 import httpx
 from fastapi import HTTPException
-from sqlalchemy import false, func
+from sqlalchemy import false, func, select
 from backend.models import CustomerLocation, Restaurant
 from backend.services.geo_service import normalize_country, detect_country
 
@@ -70,6 +70,13 @@ def configure_restaurant(row, values, previous_address=None):
         if found:
             for name in ('country','latitude','longitude'):
                 setattr(row, name, found[name])
+            from sqlalchemy.orm import object_session
+            from backend.account_enhancement_models import RestaurantRegion
+            db=object_session(row)
+            if db and found.get('city'):
+                region=db.get(RestaurantRegion,row.id)
+                if not region:region=RestaurantRegion(restaurant_id=row.id,city=found['city']);db.add(region)
+                region.city=found['city'];region.state=found.get('state','')
 
 def customer_scope(db, user, request=None):
     if user is None or user.role != 'customer':
@@ -86,7 +93,10 @@ def customer_scope(db, user, request=None):
             country = location.country
     if not country and request is not None:
         country = normalize_country(user.country) or detect_country(request, user)
-    return {'country': country, 'location': location, 'reason': None if country else 'country_required'}
+    from backend.customer_account_models import CustomerProfile
+    profile=db.get(CustomerProfile,user.id)
+    country=normalize_country(user.country) or country
+    return {'country': country, 'city':profile.city if profile else '', 'location': location, 'reason': None if country else 'country_required'}
 
 def restrict(stmt, scope):
     if scope is None:
@@ -96,6 +106,9 @@ def restrict(stmt, scope):
     location = scope['location']
     a = func.power(func.sin(func.radians(Restaurant.latitude - location.latitude) / 2), 2) + func.cos(func.radians(location.latitude)) * func.cos(func.radians(Restaurant.latitude)) * func.power(func.sin(func.radians(Restaurant.longitude - location.longitude) / 2), 2)
     metres = 2 * 6371000 * func.asin(func.sqrt(func.least(1.0, func.greatest(0.0, a))))
+    from backend.account_enhancement_models import RestaurantRegion
+    if scope.get('city'):
+        stmt=stmt.where(Restaurant.id.in_(select(RestaurantRegion.restaurant_id).where(func.lower(RestaurantRegion.city)==scope['city'].lower())))
     return stmt.where(Restaurant.country == scope['country'], Restaurant.latitude.is_not(None), Restaurant.longitude.is_not(None), metres <= RADIUS_METRES)
 
 def metadata(scope):

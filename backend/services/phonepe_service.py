@@ -115,7 +115,8 @@ def methods(db, request, user):
     country = detect_country(request, user)
     allowed = [{'id': 'cash', 'name': 'Cash on delivery / pickup'}]
     method = db.get(PaymentMethod, 'phonepe')
-    if country == 'IN' and method and method.enabled and admin.configured(admin.active_settings(db)):
+    from backend.services.account_gateway_service import methods as account_methods
+    if country == 'IN' and method and method.enabled and any(item['name']=='phonepe' for item in account_methods(db,user)):
         allowed.append({'id': 'phonepe', 'name': 'PhonePe / UPI', 'currency': 'INR', 'environment': admin.active_settings(db).environment})
     return {'country': country, 'methods': allowed}
 
@@ -125,6 +126,8 @@ def payment_result(db, payment):
 
 
 def pay(db, request, user, data):
+    from backend.services.account_gateway_service import require
+    require(db,user,'phonepe')
     if detect_country(request, user) != 'IN':
         raise HTTPException(403, 'PhonePe is available only in India')
     method = db.scalar(select(PaymentMethod).where(PaymentMethod.name == 'phonepe').with_for_update())
@@ -243,6 +246,9 @@ def refund(db, payment, data):
     if payment.status != 'COMPLETED':
         raise HTTPException(409, 'Only verified completed payments can be refunded')
     reserved = db.scalar(select(func.coalesce(func.sum(Refund.amount), 0)).where(Refund.payment_id == payment.id, Refund.status != 'FAILED'))
+    from backend.account_enhancement_models import WalletRefund
+    wallet_reserved=db.scalar(select(func.coalesce(func.sum(WalletRefund.amount),0)).where(WalletRefund.order_id.in_(select(PaymentOrder.order_id).where(PaymentOrder.payment_id==payment.id))))
+    reserved += int(wallet_reserved*100)
     if reserved + data.amount > payment.amount:
         raise HTTPException(409, 'Refund exceeds the unreserved payment amount')
     row = Refund(payment_id=payment.id, merchant_refund_id='DVR_' + uuid.uuid4().hex,

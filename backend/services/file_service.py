@@ -22,6 +22,12 @@ def upload(db, user, upload, purpose, entity_id):
         row = db.get(model, entity_id) if entity_id else None
         if not row or getattr(row, 'restaurant_id' if purpose == 'menu' else 'customer_id') != user.id:
             raise HTTPException(404, 'Upload target not found')
+        if purpose == 'review':
+            from backend.account_enhancement_models import ReviewPublication
+            if db.scalar(select(File.id).where(File.purpose=='review',File.entity_id==entity_id).offset(4).limit(1)):
+                raise HTTPException(409,'Maximum five photos per review')
+            publication=db.get(ReviewPublication,entity_id)
+            if publication:publication.status='pending';publication.moderated_at=None
     if purpose in {'cover','logo','gallery'} and entity_id != user.id:
         raise HTTPException(404, 'Upload target not found')
     raw = upload.file.read(MAX_BYTES + 1)
@@ -65,6 +71,11 @@ def download(db, user, file_id):
         from backend.services.driver_agreement_service import require_accepted
         require_accepted(db, user.id)
     row = db.get(File, file_id)
+    if row and row.purpose == 'review':
+        from backend.account_enhancement_models import ReviewPublication
+        publication=db.get(ReviewPublication,row.entity_id)
+        if not publication or publication.status!='approved' and row.user_id!=user.id and user.role!='admin':
+            raise HTTPException(404,'File not found')
     if not row or (row.user_id != user.id and row.purpose not in {'menu','review','cover','logo','gallery'} and not (row.purpose == 'profile' and db.get(__import__('backend.models', fromlist=['Restaurant']).Restaurant, row.user_id))):
         raise HTTPException(404, 'File not found')
     path = Path(row.path).resolve()

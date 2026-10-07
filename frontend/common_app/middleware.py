@@ -19,7 +19,7 @@ class PortalScopeMiddleware:
         return self.get_response(request)
 
     def _scope_response(self, request):
-        if request.path in {'/favicon.ico', '/about-us', '/sounds/arrival.mp3'}:
+        if request.path.startswith('/reviews') or request.path in {'/favicon.ico', '/about-us', '/sounds/arrival.mp3'}:
             return None
         if self.portal == 'main':
             return None if request.path == '/' else HttpResponseNotFound('Portal not available on this port')

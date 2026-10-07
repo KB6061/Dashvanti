@@ -55,3 +55,9 @@ from backend.routers import delivery_fees
 app.include_router(delivery_fees.router, prefix='/api')
 from backend.routers import customer_account
 app.include_router(customer_account.router, prefix='/api')
+from backend.routers import account_experience
+from backend.account_audit_middleware import AccountAuditMiddleware
+from backend.services.enterprise_audit_service import install as install_account_audit
+install_account_audit()
+app.add_middleware(AccountAuditMiddleware)
+app.include_router(account_experience.router, prefix='/api')

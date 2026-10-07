@@ -1,3 +1,4 @@
+from . import wallet_views
 from common_app.road_controls import road_controls
 from common_app.views import navigation_state
 from django.urls import path
@@ -9,6 +10,9 @@ from common_app.social import social_proxy
 from . import payments
 
 urlpatterns = [
+    path('wallet-checkout/<str:funding_id>',wallet_views.checkout),
+    path('wallet-webhook/<str:provider>',wallet_views.webhook),
+    path('experience/<path:endpoint>', account_views.experience_proxy),
     path('account/export', account_views.export),
     path('account/verify-login', account_views.verify_login),
     path('account', account_views.account),

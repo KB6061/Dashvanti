@@ -3,13 +3,22 @@ from common_app.road_controls import road_controls
 from common_app.views import navigation_state
 from common_app import views as common
 from django.urls import path
-from . import views
+from . import views, account_management
 
 from . import payments, delivery_fees
 
 from customer_app.account_views import admin_account
 
 urlpatterns = [
+    path('profile', common.profile),
+    path('wallet-refunds', account_management.wallet_refunds),
+    path('account-login', account_management.account_login),
+    path('audit-center', account_management.audit_center),
+    path('support-center', account_management.support_center),
+    path('gateway-controls', account_management.gateway_controls),
+    path('review-moderation', account_management.review_moderation),
+    path('account-verification', account_management.account_verification),
+    path('experience/<path:endpoint>', account_management.experience_proxy),
     path('customer/<int:customer_id>/account', admin_account),
     path('delivery-fees', delivery_fees.manage),
     path('driver-partners/manager-login', driver_partners.manager_login),

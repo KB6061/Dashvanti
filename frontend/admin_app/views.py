@@ -21,26 +21,17 @@ from backend.models import Customer, Driver, DriverLocation, Order, OrderItem, D
 
 
 def admin_api(method, path, data=None):
-    headers = {'X-Dashvanti-Admin-Secret': settings.ADMIN_PASSWORD}
-    try:
-        with httpx.Client(timeout=20) as client:
-            response = client.request(method, settings.API_URL + path, headers=headers, json=data)
-    except httpx.HTTPError as exc:
-        raise RuntimeError('Backend temporarily unavailable. Please try again.') from exc
-    if response.is_error:
-        try:
-            detail = response.json().get('detail', 'Request failed')
-            if isinstance(detail, list):
-                detail = '; '.join(item.get('msg', 'Invalid value') for item in detail)
-        except ValueError:
-            detail = 'Request failed'
-        raise RuntimeError(str(detail))
-    return response.json()
+    from common_app.admin_audit import current_request
+    from common_app.api import call, APIError
+    request=current_request.get()
+    if request is None:raise RuntimeError('Authenticated admin request required')
+    try:return call(request,method,path,data)
+    except APIError as exc:raise RuntimeError(str(exc)) from exc
 
 
 def admin_required(view):
     def wrapped(request, *args, **kwargs):
-        if not request.session.get('admin_authenticated'):
+        if not request.session.get('admin_authenticated') or request.session.get('role')!='admin' or not request.session.get('token'):
             return redirect('/admin/login')
         return view(request, *args, **kwargs)
     return wrapped
@@ -48,23 +39,8 @@ def admin_required(view):
 
 @require_http_methods(['GET', 'POST'])
 def login(request):
-    error = ''
-    if request.method == 'POST':
-        if request.POST.get('password') == settings.ADMIN_PASSWORD:
-            request.session.cycle_key()
-            request.session['admin_authenticated'] = True
-            from backend.models import SystemConfig
-            with Session() as db:
-                row=db.get(SystemConfig, 'admin:last-login')
-                request.session['admin_last_login']=row.value if row else ''
-                stamp=timezone.now().isoformat()
-                if row: row.value=stamp
-                else: db.add(SystemConfig(key='admin:last-login',value=stamp))
-                db.commit()
-            request.session['admin_login_at']=stamp
-            return redirect('/admin/dashboard')
-        error = 'Invalid admin password'
-    return render(request, 'admin_app/login.html', {'error': error})
+    from .account_management import account_login
+    return account_login(request)
 
 
 @admin_required
@@ -251,8 +227,8 @@ def orders(request):
 
 @require_http_methods(['POST'])
 def logout(request):
-    request.session.flush()
-    return redirect('/admin/login')
+    from common_app.views import logout as portal_logout
+    return portal_logout(request,'admin')
 
 
 @admin_required

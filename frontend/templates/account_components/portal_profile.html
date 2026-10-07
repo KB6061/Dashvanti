@@ -1,0 +1,7 @@
+{% extends 'base.html' %}{% block content %}
+<section class="panel"><h1>Your profile</h1>
+<div data-account-avatar>{% if identity.avatar %}<img class="account-user-avatar" src="{{ identity.avatar }}" alt="Profile photo">{% else %}{{ identity.name|slice:':1' }}{% endif %}</div>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}
+<label>Profile photo<input name="profile_photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
+<button>Save profile</button></form>
+</section>{% endblock %}

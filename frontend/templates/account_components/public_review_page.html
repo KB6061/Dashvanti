@@ -1,0 +1,7 @@
+{% extends 'base.html' %}{% block content %}
+<section class="panel"><h1>Customer reviews</h1>
+<form hidden>{% csrf_token %}</form>
+{% if account_error %}<p class="error" role="alert">{{ account_error }}</p>{% endif %}
+{% include 'account_components/public_reviews.html' %}
+<nav aria-label="Review pages">{% if page > 1 %}<a href="?page={{ previous }}&amp;restaurant_id={{ restaurant_id }}">Previous</a>{% endif %}{% if next %}<a href="?page={{ next }}&amp;restaurant_id={{ restaurant_id }}">Next</a>{% endif %}</nav>
+</section>{% endblock %}

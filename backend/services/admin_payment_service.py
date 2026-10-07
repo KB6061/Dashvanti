@@ -68,6 +68,11 @@ def update_settings(db, data):
 def toggle(db, data):
     method = db.get(PaymentMethod, data.method)
     method.enabled = data.enabled
+    if data.method=='phonepe':
+        from backend.account_enhancement_models import GatewayControl
+        control=db.get(GatewayControl,'phonepe')
+        if not control:control=GatewayControl(name='phonepe',countries='IN');db.add(control)
+        control.enabled=data.enabled
     audit(db, 'method_toggled', method=data.method, enabled=data.enabled)
     return {'method': method.name, 'enabled': method.enabled, 'configured': configured(active_settings(db)) if method.name == 'phonepe' else False}
 

@@ -1,0 +1,6 @@
+{% extends 'admin_app/admin_base.html' %}{% block admin_content %}
+<h1>Wallet refund credits</h1><p>Credit a pending refund from a verified production payment. Gateway and wallet refunds share the remaining paid amount.</p>
+{% if account_error %}<p class="error" role="alert">{{ account_error }}</p>{% endif %}
+{% for refund in refunds %}<article class="panel"><h2>Order -{{ refund.order_id }}</h2><p>{{ refund.amount }} · {{ refund.status }} · {{ refund.reason }}</p>
+{% if refund.status == 'PENDING' %}<form method="post">{% csrf_token %}<input type="hidden" name="refund_id" value="{{ refund.id }}"><label>Reason<input name="reason" minlength="3" maxlength="500" required></label><button>Credit customer wallet</button></form>{% endif %}</article>{% empty %}<p>No refund requests.</p>{% endfor %}
+{% endblock %}

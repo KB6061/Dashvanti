@@ -4,7 +4,10 @@ from django.urls import path
 from common_app import views as common
 from . import views
 
+from customer_app.account_views import experience_proxy
+
 urlpatterns = [
+    path('experience/<path:endpoint>', experience_proxy),
     path('road-controls', road_controls),
     path('navigation-state', navigation_state),
     path('order/<int:order_id>/cancellation', common.cancellation),

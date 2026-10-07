@@ -65,6 +65,8 @@ def snapshot(db,user):
         photo=(presentation.cover_file_id or presentation.logo_file_id) if presentation else None
         favorites.append({'id':store.id,'name':store.name,'cuisine':store.cuisine,'rating':float(rating or 0),'delivery_minutes':store.delivery_minutes,'photo_id':photo})
     promotions=list(db.scalars(select(Promotion).where(Promotion.enabled==True, (Promotion.starts_at==None)|(Promotion.starts_at<=now()),(Promotion.ends_at==None)|(Promotion.ends_at>now()))))
+    from backend.services.account_experience_service import promotion_allowed
+    promotions=[row for row in promotions if promotion_allowed(db,row,user)]
     wallet=db.get(CustomerWallet,(user.id,curr));transactions=list(db.scalars(select(CustomerWalletTransaction).where(CustomerWalletTransaction.customer_id==user.id,CustomerWalletTransaction.currency==curr).order_by(CustomerWalletTransaction.id.desc()).limit(100)))
     rewards=list(db.scalars(select(CustomerReward).where(CustomerReward.customer_id==user.id).order_by(CustomerReward.id.desc()).limit(100)))
     points=db.scalar(select(func.coalesce(func.sum(CustomerReward.points),0)).where(CustomerReward.customer_id==user.id))
@@ -73,7 +75,9 @@ def snapshot(db,user):
     reviews=[]
     for review,order,store in db.execute(select(Review,Order,Restaurant).join(Order,Order.id==Review.order_id).join(Restaurant,Restaurant.id==Order.restaurant_id).where(Review.customer_id==user.id).order_by(Review.id.desc())):
         rating=db.scalar(select(Rating).where(Rating.order_id==order.id))
-        reviews.append({'id':review.id,'order_id':order.id,'restaurant':store.name,'text':review.text,'restaurant_rating':rating.restaurant if rating else None,'driver_rating':rating.driver if rating else None})
+        from backend.account_enhancement_models import ReviewPublication
+        publication=db.get(ReviewPublication,review.id)
+        reviews.append({'title':publication.title if publication else '', 'publication_status':publication.status if publication else 'pending','id':review.id,'order_id':order.id,'restaurant':store.name,'text':review.text,'restaurant_rating':rating.restaurant if rating else None,'driver_rating':rating.driver if rating else None})
     tickets=[]
     for ticket in db.scalars(select(SupportTicket).where(SupportTicket.user_id==user.id).order_by(SupportTicket.id.desc()).limit(100)):
         tickets.append({**fields(ticket,['id','order_id','subject','description','status','resolution','created_at']), 'replies':[fields(row,['id','body','created_at']) for row in db.scalars(select(CustomerSupportReply).where(CustomerSupportReply.ticket_id==ticket.id).order_by(CustomerSupportReply.id))]})
@@ -81,15 +85,17 @@ def snapshot(db,user):
     logins=list(db.scalars(select(CustomerLoginHistory).where(CustomerLoginHistory.customer_id==user.id).order_by(CustomerLoginHistory.id.desc()).limit(30)))
     from backend.models import PlatformContent
     policies={key:(db.get(PlatformContent,'legal_'+key).description if db.get(PlatformContent,'legal_'+key) and db.get(PlatformContent,'legal_'+key).enabled else '') for key,_ in LEGAL}
-    return {'user':fields(user,['id','name','email','phone','country']), 'profile':{**fields(profile,['first_name','last_name','date_of_birth','gender','language','state','city','timezone','timezone_detected','theme','created_at']),'photo_id':photo,'account_status':'Deletion requested' if security.deletion_requested_at else 'Active'},
+    from backend.services.account_experience_service import snapshot_extra
+    extra=snapshot_extra(db,user)
+    return {**extra, 'user':fields(user,['id','name','email','phone','country']), 'profile':{**fields(profile,['first_name','last_name','date_of_birth','gender','language','state','city','timezone','timezone_detected','theme','created_at']),'photo_id':photo,'account_status':'Deletion requested' if security.deletion_requested_at else 'Active'},
         'currency':curr,'symbol':symbol,'stats':{'total_orders':len(orders),'favorites':len(favorites),'addresses':len(addresses),'balance':wallet.balance if wallet else Decimal(0),'coupons':len(promotions),'last_order_at':orders[0].created_at if orders else None},
         'addresses':[{**fields(row,['id','label','details','is_default','country','city','state','latitude','longitude']),**(fields(db.get(CustomerAddressDetails,row.id),['address_type','apartment','landmark','zip_code','instructions']) if db.get(CustomerAddressDetails,row.id) else {})} for row in addresses],
         'orders':[{**fields(order,['id','status','created_at','total','currency','payment_mode','address']), 'restaurant_name':db.get(Restaurant,order.restaurant_id).name if db.get(Restaurant,order.restaurant_id) else 'Restaurant','active':order.status not in {'DELIVERED','CANCELLED','CANCELED','REJECTED','REFUNDED'}} for order in orders],
-        'favorites':favorites,'coupons':[fields(row,['id','code','description','percent','minimum','cap','ends_at']) for row in promotions], 'wallet_transactions':[fields(row,['id','currency','amount','kind','reference','description','created_at']) for row in transactions],
+        'favorites':favorites,'coupons':[fields(row,['id','code','title','description','percent','minimum','cap','ends_at','first_order_only']) for row in promotions], 'wallet_transactions':[fields(row,['id','currency','amount','kind','reference','description','created_at']) for row in transactions],
         'wallet_balances':[fields(row,['currency','balance']) for row in db.scalars(select(CustomerWallet).where(CustomerWallet.customer_id==user.id))],
         'reward_points':points,'rewards':[fields(row,['points','description','created_at']) for row in rewards], 'reward_value':config(db,'reward_value_'+curr),
         'payment_methods':[fields(row,['id','provider','brand','last4','exp_month','exp_year','is_default']) for row in db.scalars(select(CustomerPaymentMethod).where(CustomerPaymentMethod.customer_id==user.id))],
-        'card_setup_available':bool(os.environ.get('STRIPE_SECRET_KEY')),'reviews':reviews,'notifications':fields(preferences,NOTIFICATION_FIELDS),'tickets':tickets,'support_categories':CATEGORIES,
+        'card_setup_available':bool(os.environ.get('STRIPE_SECRET_KEY')) and any(item['name']=='stripe' for item in extra['gateways']),'reviews':reviews,'notifications':fields(preferences,NOTIFICATION_FIELDS),'tickets':tickets,'support_categories':CATEGORIES,
         'security':{'two_factor_enabled':security.totp_enabled,'deletion_requested_at':security.deletion_requested_at,'last_login':logins[0].created_at if logins else None},
         'login_history':[fields(row,['provider','ip_address','user_agent','created_at']) for row in logins], 'devices':[fields(row,['id','information','last_seen']) for row in db.scalars(select(CustomerDevice).where(CustomerDevice.customer_id==user.id))],
         'referral':{'code':referral.code,'count':db.scalar(select(func.count()).select_from(CustomerReferral).where(CustomerReferral.referred_by==user.id)), 'earnings':db.scalar(select(func.coalesce(func.sum(CustomerWalletTransaction.amount),0)).where(CustomerWalletTransaction.customer_id==user.id,CustomerWalletTransaction.currency==curr,CustomerWalletTransaction.kind=='referral')),'link':'https://customer.dashvanti.com/customer/register?ref='+referral.code},
@@ -97,11 +103,16 @@ def snapshot(db,user):
 
 def save_profile(db,user,data):
     profile=record(db,CustomerProfile,user)
+    if data.country != user.country:
+        raise HTTPException(422,'Country is detected from your delivery address. Change the delivery address first.')
+    from backend.services.account_location_service import STATES
+    if data.state and data.state not in STATES.get(data.country,[]):
+        raise HTTPException(422,'Choose a state for your country')
     try:ZoneInfo(data.timezone)
     except ZoneInfoNotFoundError:raise HTTPException(422,'Choose a valid timezone')
     if data.date_of_birth and data.date_of_birth>date.today():raise HTTPException(422,'Date of birth cannot be in the future')
     if data.gender not in {'female','male','other','prefer_not_to_say'}:raise HTTPException(422,'Choose a valid gender')
-    if str(data.email).lower()!=user.email.lower() or data.phone!=user.phone:
+    if str(data.email).lower()!=user.email.lower() or data.phone!=(user.phone or ''):
         reauthenticate(user,data.current_password)
     if db.scalar(select(User.id).where(User.email==str(data.email).lower(),User.id!=user.id)):raise HTTPException(409,'Email already registered')
     # Country/currency changes cannot convert existing wallet balances.
@@ -210,7 +221,8 @@ def action(db,user,name,data):
             setattr(row,field,data[field])
     elif name=='coupon_save':
         uid=int(data['id']);promotion=db.get(Promotion,uid)
-        if not promotion or not promotion.enabled or promotion.ends_at and promotion.ends_at<=now():raise HTTPException(409,'Coupon unavailable')
+        from backend.services.account_experience_service import promotion_allowed
+        if not promotion or not promotion_allowed(db,promotion,user) or not promotion.enabled or promotion.ends_at and promotion.ends_at<=now():raise HTTPException(409,'Coupon unavailable')
         if not db.get(CustomerCoupon,(user.id,uid)):db.add(CustomerCoupon(customer_id=user.id,promotion_id=uid))
     elif name=='redeem':
         db.scalar(select(Customer).where(Customer.id==user.id).with_for_update());points=int(data['points']);available=db.scalar(select(func.coalesce(func.sum(CustomerReward.points),0)).where(CustomerReward.customer_id==user.id))
@@ -219,17 +231,13 @@ def action(db,user,name,data):
         if points<=0 or points>available:raise HTTPException(409,'Not enough reward points')
         reference='reward:'+secrets.token_hex(16);db.add(CustomerReward(customer_id=user.id,points=-points,description='Redeemed to wallet',reference=reference));wallet_credit(db,user,(rate*points).quantize(Decimal('.01')),'promotion',reference,'Reward points redemption')
     elif name=='support_create':
-        category=data.get('category')
-        if category not in CATEGORIES:raise HTTPException(422,'Choose a support category')
-        body=str(data.get('description','')).strip()
-        if not body or len(body)>10000:raise HTTPException(422,'Enter a message up to 10000 characters')
-        oid=int(data['order_id']) if data.get('order_id') else None
-        if oid:owned(db,Order,oid,user)
-        db.add(SupportTicket(user_id=user.id,order_id=oid,subject=category,description=body))
+        from backend.account_enhancement_schemas import TicketInput
+        from backend.services.incident_service import create
+        return create(db,user,TicketInput(**{key:value for key,value in data.items() if key in {'order_id','category','subcategory','priority','description'} and value!=''}))
     elif name=='support_reply':
-        ticket=owned(db,SupportTicket,data['id'],user,'user_id');body=str(data.get('body','')).strip()
-        if not body or len(body)>10000:raise HTTPException(422,'Enter a reply up to 10000 characters')
-        db.add(CustomerSupportReply(ticket_id=ticket.id,user_id=user.id,body=body));ticket.updated_at=now();ticket.status='open'
+        from backend.account_enhancement_schemas import TicketAction
+        from backend.services.incident_service import change
+        return change(db,user,int(data['id']),TicketAction(action='reply',body=str(data.get('body',''))))
     elif name in {'review_update','review_delete'}:
         row=owned(db,Review,data['id'],user)
         if name=='review_delete':
@@ -238,10 +246,16 @@ def action(db,user,name,data):
             value=int(data['rating']);driver=int(data['driver_rating']) if data.get('driver_rating') else None
             if not 1<=value<=5 or driver is not None and not 1<=driver<=5:raise HTTPException(422,'Rating must be between 1 and 5')
             if driver is not None and not db.get(Order,row.order_id).driver_id:raise HTTPException(422,'This order has no driver to rate')
+            from backend.account_enhancement_models import ReviewPublication
+            publication=db.get(ReviewPublication,row.id)
+            if not publication:publication=ReviewPublication(review_id=row.id);db.add(publication)
+            publication.title=str(data.get('title',''))[:120];publication.status='pending';publication.moderated_at=None
             row.text=str(data.get('text',''))[:2000];rating=db.scalar(select(Rating).where(Rating.order_id==row.order_id))
             if not rating:rating=Rating(order_id=row.order_id);db.add(rating)
             rating.restaurant=value;rating.driver=driver
     elif name=='payment_start':
+        from backend.services.account_gateway_service import require
+        require(db,user,'stripe')
         profile=record(db,CustomerProfile,user)
         if not profile.stripe_customer_id:profile.stripe_customer_id=stripe_request('POST','customers',{'email':user.email,'name':user.name,'metadata[dashvanti_user_id]':str(user.id)})['id']
         session=stripe_request('POST','checkout/sessions',{'mode':'setup','customer':profile.stripe_customer_id,'currency':currency(user)[0].lower(),'payment_method_types[0]':'card','setup_intent_data[usage]':'on_session','metadata[dashvanti_user_id]':str(user.id),'success_url':'https://customer.dashvanti.com/customer/account/payment-methods?session_id={CHECKOUT_SESSION_ID}','cancel_url':'https://customer.dashvanti.com/customer/account/payment-methods'})

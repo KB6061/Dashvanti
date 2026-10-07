@@ -125,7 +125,10 @@ def logout(request,role):
     except APIError:
         pass
     request.session.flush()
-    return redirect('/'+role+'/login')
+    response=redirect('/'+role+'/login')
+    response['Cache-Control']='no-store'
+    response['Clear-Site-Data']='"cache", "cookies", "storage"'
+    return response
 
 @protected
 @require_http_methods(['GET','POST'])
@@ -134,11 +137,15 @@ def profile(request):
     form = ProfileForm(request.POST or None,initial=me)
     if request.method=='POST' and form.is_valid():
         call(request,'PUT','/me',form.cleaned_data)
+        photo=request.FILES.get('profile_photo')
+        if photo:
+            uploaded=call(request,'POST','/files',{'purpose':'profile'},files={'file':(photo.name,photo,photo.content_type)})
+            request.session['profile_photo']=uploaded.get('id')
         request.session['name'] = form.cleaned_data.get('name','')
         request.session['email'] = form.cleaned_data.get('email','')
         messages.success(request,'Profile saved')
         return redirect(request.path)
-    return render(request,'form.html',{'form':form,'title':'Your profile'})
+    return render(request,'account_components/portal_profile.html',{'form':form,'title':'Your profile','identity':call(request,'GET','/account-experience/identity')})
 
 @protected
 @require_http_methods(['GET','POST'])
@@ -247,21 +254,14 @@ def stats(request):
 @protected
 @require_http_methods(['GET', 'POST'])
 def support(request):
-    order_rows = call(request, 'GET', '/orders')
-    if request.method == 'POST':
-        order_id = request.POST.get('order_id') or None
-        payload = {
-            'order_id': int(order_id) if order_id else None,
-            'subject': request.POST.get('subject', ''),
-            'description': request.POST.get('description', ''),
-        }
-        call(request, 'POST', '/operations/tickets', payload)
-        messages.success(request, 'Support ticket created')
-        return redirect(request.path)
-    return render(request, 'operations.html', {
-        'mode': 'support', 'tickets': call(request, 'GET', '/operations/tickets'),
-        'orders': order_rows, 'title': 'Support',
-    })
+    if request.session.get('role')=='customer':return redirect('/customer/account/support')
+    from django.template.loader import render_to_string
+    from django.http import JsonResponse
+    filters={key:value for key,value in request.GET.items() if key in {'q','status','priority','category','date_from','date_to','sort','direction','page','size'} and value}
+    result=call(request,'GET','/account-experience/tickets',params=filters)
+    context={'incidents':result,'ticket_filters':filters,'orders':call(request,'GET','/orders'),'title':'Support Center','ticket_statuses':['Open','Assigned','In Progress','Waiting Customer','Escalated','Resolved','Closed'],'tickets_has_next':result['page']*result['size']<result['total']}
+    if request.headers.get('X-Incident-Panel')=='1':return JsonResponse({'html':render_to_string('account_components/ticket_list.html',context,request=request)})
+    return render(request,'account_components/support_page.html',context)
 
 @protected
 @require_http_methods(['GET', 'POST'])

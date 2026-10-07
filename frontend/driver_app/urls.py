@@ -1,3 +1,4 @@
+from common_app.account_experience import proxy as account_experience_proxy
 from . import partner_views, agreement_views
 from common_app.views import navigation_state
 from django.urls import path
@@ -5,6 +6,7 @@ from common_app import views as common
 from . import views, map_controls
 
 urlpatterns = [
+    path('experience/<path:endpoint>', account_experience_proxy),
     path('agreement', agreement_views.agreement),
     path('agreement/read', agreement_views.read),
     path('partner', partner_views.dashboard),

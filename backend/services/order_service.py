@@ -53,6 +53,9 @@ def promotion_discount(db, user, code, subtotal, has_prior_order=None):
         return Decimal('0.00')
     now = datetime.utcnow()
     row = db.scalar(select(Promotion).where(func.upper(Promotion.code) == code.upper(), Promotion.enabled == True))
+    from backend.services.account_experience_service import promotion_allowed
+    if row and not promotion_allowed(db,row,user):
+        raise HTTPException(409,'Promotion is not available in your country or city')
     if not row or (row.starts_at and row.starts_at > now) or (row.ends_at and row.ends_at < now):
         raise HTTPException(409, 'Promotion is not available')
     if subtotal < row.minimum:

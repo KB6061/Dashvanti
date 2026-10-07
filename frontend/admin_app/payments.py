@@ -77,8 +77,8 @@ def transaction(request, transaction_id):
 @admin_required
 @require_http_methods(['GET'])
 def logs(request):
-    with httpx.Client(timeout=60) as client:
-        response = client.get(settings.API_URL + '/admin/payment/logs', headers={'X-Dashvanti-Admin-Secret': settings.ADMIN_PASSWORD})
+    from common_app.api import call
+    response = call(request,'GET','/admin/payment/logs',raw=True)
     result = HttpResponse(response.content, content_type='application/json', status=response.status_code)
     result['Cache-Control'] = 'no-store'
     if response.is_success:

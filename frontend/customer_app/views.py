@@ -43,11 +43,9 @@ def restaurants(request):
             item['restaurant_name'] = restaurant_row['name']
             item['cuisine'] = restaurant_row.get('cuisine', '')
             featured.append(item)
-    reviews = [
-        {'name': 'Anika', 'text': 'Bright flavors, quick delivery, and everything arrived warm.'},
-        {'name': 'Rahul', 'text': 'The pickup flow was smooth and the naan was fresh.'},
-    ]
-    rewards = ['Free delivery after two more orders', 'Weekend spice bowl bonus']
+    reviews = call(request,'GET','/account-experience/reviews',params={'size':8})['items']
+    reward_entries = call(request,'GET','/account-experience/rewards')
+    rewards = [item['description'] for item in reward_entries]
     home_content = call(request, 'GET', '/content/home')
     try:
         customer_location = call(request, 'GET', '/customer/location')
@@ -129,7 +127,10 @@ def restaurant(request,restaurant_id):
             grouped.setdefault(item.get('category') or 'General', []).append(item)
     cover = (result.get('presentation') or {}).get('cover_file_id')
     result['banner_url'] = f'/customer/files/{cover}' if cover else next((item['photo_urls'][0] for item in result.get('menu', []) if item.get('photo_urls')), '')
-    result['promotions'] = call(request, 'GET', '/content/promotions')
+    result['promotions'] = call(request,'GET','/customer/account')['coupons']
+    for review in result.get('reviews',[]):
+        review['avatar']=review.get('avatar','').replace('/api/account-experience/','/customer/experience/')
+        review['photo_urls']=[url.replace('/api/account-experience/','/customer/experience/') for url in review.get('photo_urls',[])]
     result['menu_groups'] = [{'name': name, 'items': items} for name, items in grouped.items()]
     return render(request,'customer_app/restaurant.html',result)
 

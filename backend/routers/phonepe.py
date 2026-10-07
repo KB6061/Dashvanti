@@ -22,6 +22,9 @@ def country(data: CountryInput, user=Depends(customer)):
     value = normalize_country(data.country)
     if not value:
         raise HTTPException(400, 'Use India or a two-letter country code')
+    if user.country != value:
+        from fastapi import HTTPException
+        raise HTTPException(422,'Country is determined by your delivery address. Update the address first.')
     user.country = value
     return {'country': value}
 
@@ -50,6 +53,10 @@ def refund(data: RefundWithPayment, db=Depends(get_db, scope='function')):
 
 @router.post('/phonepe/callback')
 async def callback(request: Request, tasks: BackgroundTasks, db=Depends(get_db, scope='function')):
-    payment_id, refund_id = service.receive_callback(db, await request.body(), request.headers)
+    from backend.services.wallet_webhook_service import phonepe_funding,read_body
+    raw=await read_body(request)
+    wallet_result=phonepe_funding(db,raw,request.headers)
+    if wallet_result is not None:return {'received':True,**wallet_result}
+    payment_id, refund_id = service.receive_callback(db,raw,request.headers)
     tasks.add_task(service.reconcile, payment_id, refund_id)
     return {'received': True}

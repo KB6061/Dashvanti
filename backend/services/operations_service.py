@@ -151,11 +151,9 @@ def _order(db, user, order_id):
 def create_ticket(db, user, data):
     if data.order_id is not None:
         _order(db, user, data.order_id)
-    row = SupportTicket(user_id=user.id, order_id=data.order_id, subject=data.subject, description=data.description)
-    db.add(row)
-    db.flush()
-    audit(db, user.id, 'support-ticket-created', f'ticket:{row.id}')
-    return ticket_data(db, row)
+    from backend.account_enhancement_schemas import TicketInput
+    from backend.services.incident_service import create
+    return create(db,user,TicketInput(order_id=data.order_id,category=data.subject,description=data.description))
 
 def ticket_data(db, row):
     owner = db.get(User, row.user_id)
@@ -179,7 +177,15 @@ def update_ticket(db, ticket_id, data):
         raise HTTPException(404, 'Ticket not found')
     row.status = data.status
     row.resolution = data.resolution
-    notify(db, row.user_id, 'support', f'Support ticket #{row.id} is {row.status}.', row.order_id)
+    from backend.services.incident_service import metadata,number
+    from backend.account_enhancement_models import IncidentMessage,IncidentEvent
+    metadata(db,row)
+    actor=db.info.get('audit_actor',{})
+    if data.resolution:
+        db.add(IncidentMessage(ticket_id=row.id,author_id=actor.get('id'),author_role='admin',body=data.resolution,internal=False))
+    db.add(IncidentEvent(ticket_id=row.id,actor_id=actor.get('id'),action='legacy_status_update',details=json.dumps({'status':data.status})))
+    from backend.services.incident_service import number
+    notify(db, row.user_id, 'support', f'Support ticket {number(row.id)} is {row.status}.', row.order_id)
     audit(db, None, 'support-ticket-updated', f'ticket:{row.id}')
     db.flush()
     return ticket_data(db, row)

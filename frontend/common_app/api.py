@@ -48,7 +48,7 @@ def renew_session(request):
         raise APIError('Service temporarily unavailable. Please try again.', 503)
 
 def call(request, method, path, data=None, params=None, files=None, raw=False):
-    public_auth = path.startswith('/auth/') and path.rsplit('/', 1)[-1] in {'login', 'register', 'forgot', 'reset', 'account-2fa'}
+    public_auth = path=='/account-experience/admin/sign-in' or (path.startswith('/auth/') and path.rsplit('/', 1)[-1] in {'login', 'register', 'forgot', 'reset', 'account-2fa'}) or (method=='GET' and (path=='/account-experience/reviews' or path.startswith(('/account-experience/states/','/account-experience/avatar/','/account-experience/review-photo/'))))
     try:
         if not public_auth:
             renew_session(request)
@@ -58,8 +58,13 @@ def call(request, method, path, data=None, params=None, files=None, raw=False):
         raise APIError('Session expired', 401)
     headers = {'Authorization':'Bearer '+request.session['token']} if request.session.get('token') else {}
     headers['Cookie'] = ''
+    if request.session.get('role')=='admin':headers['X-Dashvanti-Admin-Secret']=settings.ADMIN_PASSWORD
+    if request.session.get('role')=='admin':
+        import json
+        headers['X-Dashvanti-Audit-Reason']=json.dumps(request.POST.get('reason','')[:500],ensure_ascii=True)
     headers['User-Agent'] = request.META.get('HTTP_USER_AGENT', '')[:500]
-    if path.startswith(('/payment/', '/phonepe/')):
+    headers['Accept-Language'] = request.META.get('HTTP_ACCEPT_LANGUAGE', '')[:200]
+    if request.session.get('token') or path.startswith('/auth/') or path=='/account-experience/admin/sign-in':
         import hashlib, hmac, os
         key = os.environ.get('PAYMENT_PROXY_SECRET', '')
         peer = request.META.get('REMOTE_ADDR', '')

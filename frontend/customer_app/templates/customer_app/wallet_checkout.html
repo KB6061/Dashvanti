@@ -1,0 +1,14 @@
+{% extends 'base.html' %}{% load static %}
+{% block content %}
+<section class="panel"><h1>Secure wallet checkout</h1>
+{% if account_error %}<p class="error" role="alert">{{ account_error }}</p>{% else %}
+<p>{{ checkout.currency }} {{ checkout.amount }} · {{ checkout.provider|title }}</p>
+{{ checkout|json_script:'wallet-checkout-data' }}
+{% if checkout.provider == 'authorize_net' %}
+<form method="post" action="{{ checkout.action }}"><input type="hidden" name="token" value="{{ checkout.token }}"><button>Continue to secure payment</button></form>
+{% else %}<div id="wallet-payment"></div><button id="wallet-pay">Pay securely</button><p id="wallet-payment-error" class="error" role="alert"></p>
+{% endif %}
+<a href="/customer/account/wallet">Return to wallet</a>
+<script src="{% static 'wallet-checkout.js' %}"></script>
+{% endif %}</section>
+{% endblock %}

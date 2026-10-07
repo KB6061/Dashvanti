@@ -52,7 +52,11 @@ def restaurant_suggestions(request: Request, user=Depends(optional_user), q: str
 
 @router.get('/restaurants/{restaurant_id}')
 def restaurant_detail(restaurant_id: int, db=Depends(get_db, scope='function')):
-    return restaurant_service.detail(db,restaurant_id)
+    result=restaurant_service.detail(db,restaurant_id)
+    from backend.services.account_experience_service import reviews,verified
+    result['reviews']=[{**row,'photo_urls':[f'/api/account-experience/review-photo/{id}' for id in row['photos']]} for row in reviews(db,restaurant_id,size=100)['items']]
+    result['verified']=verified(db,restaurant_id)
+    return result
 
 @router.put('/restaurant/profile')
 def restaurant_profile(data: RestaurantInput, user=Depends(restaurant), db=Depends(get_db, scope='function')):

@@ -84,7 +84,11 @@ def detail(request, driver_id):
 def document(request, document_id):
     if not request.session.get('admin_authenticated'): manager_api(request, 'GET', '/admin/driver-partners')
     headers = {'X-Dashvanti-Admin-Secret': settings.ADMIN_PASSWORD} if request.session.get('admin_authenticated') else {'Authorization': 'Bearer '+request.session.get('driver_manager_token','')}
-    result = api_client().get(settings.API_URL+f'/admin/driver-partners/documents/{document_id}/file', headers=headers)
+    if request.session.get('admin_authenticated'):
+        from common_app.api import call
+        result=call(request,'GET',f'/admin/driver-partners/documents/{document_id}/file',raw=True)
+    else:
+        result = api_client().get(settings.API_URL+f'/admin/driver-partners/documents/{document_id}/file', headers=headers)
     return HttpResponse(result.content if result.is_success else b'', status=result.status_code, content_type='image/jpeg', headers={'Cache-Control': 'no-store'})
 
 

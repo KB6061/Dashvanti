@@ -101,7 +101,11 @@ def experience(db, restaurant_id, user=None):
             bucket = review_photos.setdefault(photo.entity_id, [])
             if len(bucket) < 5:
                 bucket.append(f'/api/files/{photo.id}/thumbnail')
-    result['reviews'] = [{'id': review.id, 'text': review.text, 'rating': rating, 'name': name, 'photo_urls': review_photos.get(review.id, [])} for review, rating, name in reviews]
+    from backend.services.account_experience_service import reviews as published_reviews, verified
+    result['reviews'] = [{**item,'photo_urls':[f'/customer/experience/review-photo/{photo_id}' for photo_id in item['photos']], 'avatar':item['avatar'].replace('/api/account-experience/','/customer/experience/')} for item in published_reviews(db,row.id,size=100)['items']]
+    result['verified'] = verified(db,row.id)
+    result['rating_count'] = len(result['reviews'])
+    result['rating'] = round(sum(item['rating'] or 0 for item in result['reviews']) / len(result['reviews']),1) if result['reviews'] else 0
     result['customer_photos'] = [photo for review in result['reviews'] for photo in review['photo_urls']]
     result['customer_photo_count'] = db.scalar(select(func.count(File.id)).join(Review, File.entity_id == Review.id).join(Order, Review.order_id == Order.id).where(File.purpose == 'review', Order.restaurant_id == row.id)) or 0
     result['popular_ids'] = list(db.scalars(select(OrderItem.menu_item_id).join(Order, OrderItem.order_id == Order.id).where(Order.restaurant_id == row.id, Order.status == 'DELIVERED').group_by(OrderItem.menu_item_id).order_by(func.sum(OrderItem.quantity).desc()).limit(12)))

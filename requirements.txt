@@ -30,3 +30,6 @@ websockets>=13,<16
 timezonefinder>=6,<9
 firebase-admin>=7,<8
 cachecontrol>=0.14,<1
+
+paytmchecksum @ git+https://github.com/paytm/Paytm_Python_Checksum.git@f1efd1d4e6b2524417437760910729486f4869b8
+pycryptodome>=3.21,<4
